@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Code2, Search } from 'lucide-react';
+import { BookOpen, Code2, Search } from 'lucide-react';
 import type { CatalogPagination, ComicSummary, KomikuFilters } from '../types';
 import { ComicDetailModal } from './ComicDetailModal';
 import { JsonResponseModal } from './JsonResponseModal';
+import { Pagination } from './Pagination';
 import { SelectDropdown } from './SelectDropdown';
 import { StarRating } from './StarRating';
 
@@ -15,7 +16,6 @@ export function PerpustakaanSection() {
   const [sortBy, setSortBy] = useState<'latest' | 'popular' | 'rating'>('latest');
   const [perPage, setPerPage] = useState(50);
   const [page, setPage] = useState(1);
-  const [jumpPageInput, setJumpPageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [filters, setFilters] = useState<KomikuFilters>({
@@ -98,28 +98,6 @@ export function PerpustakaanSection() {
     setPage(1);
   };
 
-  const getPageWindow = (): number[] => {
-    const total = Math.max(1, pagination.total_pages);
-    const current = Math.min(page, total);
-    const start = Math.max(1, current - 2);
-    const end = Math.min(total, start + 4);
-    const adjustedStart = Math.max(1, end - 4);
-    const pages: number[] = [];
-    for (let i = adjustedStart; i <= end; i += 1) {
-      pages.push(i);
-    }
-    return pages;
-  };
-
-  const handleJumpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const num = Number.parseInt(jumpPageInput, 10);
-    if (!Number.isNaN(num) && num >= 1 && num <= pagination.total_pages) {
-      setPage(num);
-      setJumpPageInput('');
-    }
-  };
-
   const handleCoverError = (comic: ComicSummary) => {
     setCoverStage((prev) => {
       const current = prev[comic.id];
@@ -133,33 +111,33 @@ export function PerpustakaanSection() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:pb-6 md:flex-row md:items-end">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:pb-6 md:flex-row md:items-end dark:border-slate-800">
         <div>
-          <p className="text-xs font-medium tracking-wide text-rose-700">
-            Arsip Lengkap Komiku.org · Pagination Real-Time
+          <p className="text-xs font-semibold tracking-wide text-rose-700 dark:text-rose-400">
+            Endpoint /api/v1/komik/perpustakaan · Full Pagination
           </p>
-          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            Perpustakaan Anime & Komik Komiku
+          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">
+            Perpustakaan API Komik &amp; Anime
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Telusuri seluruh koleksi {pagination.total_items.toLocaleString('id-ID')} judul dari Komiku.org lengkap dengan filter tipe, 50+ genre, adaptasi anime, urutan rilis, serta tombol ambil respon JSON langsung tanpa cURL.
+          <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+            Telusuri seluruh koleksi {pagination.total_items.toLocaleString('id-ID')} judul terindeks dengan filter tipe, 50+ genre, adaptasi anime, urutan rilis, serta inspeksi respon JSON/cURL langsung.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setJsonModalPath(buildV1LibraryPath())}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap sm:w-auto sm:shrink-0"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap sm:w-auto sm:shrink-0 dark:border dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
         >
-          <Code2 className="h-4 w-4 text-rose-400" />
-          Ambil Respon JSON Halaman Ini
+          <Code2 className="h-4 w-4 text-emerald-400" />
+          Ambil Respon JSON &amp; cURL
         </button>
       </div>
 
       {/* Filter Bar */}
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1 dark:bg-slate-950 dark:border dark:border-slate-800">
             {(
               [
                 { id: 'all', label: 'Semua Koleksi' },
@@ -174,7 +152,9 @@ export function PerpustakaanSection() {
                 type="button"
                 onClick={() => handlePresetChange(tab.id)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  preset === tab.id ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  preset === tab.id
+                    ? 'bg-white text-slate-950 shadow-xs dark:bg-slate-800 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
               >
                 {tab.label}
@@ -192,14 +172,14 @@ export function PerpustakaanSection() {
                 setPage(1);
               }}
               placeholder="Filter judul di perpustakaan..."
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-rose-500"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>
-            <label htmlFor="lib-genre" className="block text-xs font-medium text-slate-600">
+            <label htmlFor="lib-genre" className="block text-xs font-medium text-slate-600 dark:text-slate-400">
               Genre ({filters.genres.length})
             </label>
             <SelectDropdown
@@ -221,7 +201,7 @@ export function PerpustakaanSection() {
           </div>
 
           <div>
-            <label htmlFor="lib-status" className="block text-xs font-medium text-slate-600">
+            <label htmlFor="lib-status" className="block text-xs font-medium text-slate-600 dark:text-slate-400">
               Status Rilis
             </label>
             <SelectDropdown
@@ -243,7 +223,7 @@ export function PerpustakaanSection() {
           </div>
 
           <div>
-            <label htmlFor="lib-sort" className="block text-xs font-medium text-slate-600">
+            <label htmlFor="lib-sort" className="block text-xs font-medium text-slate-600 dark:text-slate-400">
               Urutkan
             </label>
             <SelectDropdown
@@ -264,7 +244,7 @@ export function PerpustakaanSection() {
           </div>
 
           <div>
-            <label htmlFor="lib-limit" className="block text-xs font-medium text-slate-600">
+            <label htmlFor="lib-limit" className="block text-xs font-medium text-slate-600 dark:text-slate-400">
               Item per Halaman
             </label>
             <SelectDropdown
@@ -288,13 +268,13 @@ export function PerpustakaanSection() {
       </div>
 
       {/* Pagination Top Info */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
         <p className="tabular-nums">
-          Menampilkan halaman <span className="font-semibold text-slate-900">{pagination.page}</span> dari{' '}
-          <span className="font-semibold text-slate-900">{pagination.total_pages.toLocaleString('id-ID')}</span> · Total{' '}
-          <span className="font-semibold text-slate-900">{pagination.total_items.toLocaleString('id-ID')}</span> judul
+          Menampilkan halaman <span className="font-semibold text-slate-900 dark:text-slate-100">{pagination.page}</span> dari{' '}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{pagination.total_pages.toLocaleString('id-ID')}</span> · Total{' '}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{pagination.total_items.toLocaleString('id-ID')}</span> judul
         </p>
-        <p className="font-mono text-slate-500 truncate max-w-full">{buildV1LibraryPath()}</p>
+        <p className="font-mono text-[11px] text-slate-500 truncate max-w-full dark:text-slate-400">GET {buildV1LibraryPath()}</p>
       </div>
 
       {/* Library Grid */}
@@ -302,15 +282,15 @@ export function PerpustakaanSection() {
         <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:grid-cols-6">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="space-y-2.5">
-              <div className="aspect-[3/4] rounded-lg bg-slate-200/70 animate-pulse" />
-              <div className="h-4 w-4/5 rounded bg-slate-200/70 animate-pulse" />
-              <div className="h-3 w-3/5 rounded bg-slate-200/70 animate-pulse" />
+              <div className="aspect-[3/4] rounded-lg bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
+              <div className="h-4 w-4/5 rounded bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
+              <div className="h-3 w-3/5 rounded bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
             </div>
           ))}
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center sm:p-10">
-          <p className="text-sm font-medium text-slate-900">Tidak ada judul yang sesuai filter perpustakaan.</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center sm:p-10 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Tidak ada judul yang sesuai filter perpustakaan.</p>
           <button
             type="button"
             onClick={() => {
@@ -320,7 +300,7 @@ export function PerpustakaanSection() {
               setSearchQuery('');
               setPage(1);
             }}
-            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Reset Filter
           </button>
@@ -337,7 +317,7 @@ export function PerpustakaanSection() {
                 onClick={() => setSelectedSlug(comic.slug)}
                 className="group flex flex-col text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-rose-700"
               >
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
                   {stage === 'broken' || !imgSrc ? (
                     <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-3 text-center text-white">
                       <BookOpen className="mb-2 h-6 w-6 text-rose-400" />
@@ -361,13 +341,13 @@ export function PerpustakaanSection() {
                 </div>
 
                 <div className="mt-2 space-y-1">
-                  <h3 className="font-display text-sm font-semibold leading-snug text-slate-900 line-clamp-2 group-hover:text-rose-700">
+                  <h3 className="font-display text-sm font-semibold leading-snug text-slate-900 line-clamp-2 group-hover:text-rose-700 dark:text-slate-100 dark:group-hover:text-rose-400">
                     {comic.title}
                   </h3>
                   <div className="flex items-center">
                     <StarRating rating={comic.rating} compact />
                   </div>
-                  <p className="text-xs text-slate-500 truncate tabular-nums">
+                  <p className="text-xs text-slate-500 truncate tabular-nums dark:text-slate-400">
                     <span>{comic.type}</span>
                     <span className="mx-1.5" aria-hidden="true">·</span>
                     <span>{comic.status}</span>
@@ -379,74 +359,21 @@ export function PerpustakaanSection() {
         </div>
       )}
 
-      {/* Full Pagination Bar */}
-      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 sm:flex-row sm:px-5">
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <button
-            type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 sm:px-3"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Sebelumnya</span>
-          </button>
-
-          {getPageWindow().map((pNum) => (
-            <button
-              key={pNum}
-              type="button"
-              disabled={loading}
-              onClick={() => setPage(pNum)}
-              className={`min-w-[34px] rounded-lg px-2.5 py-1.5 font-mono text-xs font-medium tabular-nums transition-colors ${
-                pNum === page
-                  ? 'bg-rose-700 text-white'
-                  : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              {pNum}
-            </button>
-          ))}
-
-          <button
-            type="button"
-            disabled={page >= pagination.total_pages || loading}
-            onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 sm:px-3"
-          >
-            <span className="hidden sm:inline">Berikutnya</span>
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleJumpSubmit} className="flex items-center gap-2 text-xs">
-          <label htmlFor="jump-page" className="text-slate-600">
-            Lompat ke hal:
-          </label>
-          <input
-            id="jump-page"
-            type="number"
-            min={1}
-            max={pagination.total_pages}
-            value={jumpPageInput}
-            onChange={(e) => setJumpPageInput(e.target.value)}
-            placeholder={String(page)}
-            className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-xs text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-800 hover:bg-slate-100"
-          >
-            Buka
-          </button>
-        </form>
-      </div>
+      <Pagination
+        page={page}
+        totalPages={pagination.total_pages}
+        totalItems={pagination.total_items}
+        itemCount={items.length}
+        itemLabel="judul"
+        loading={loading}
+        onPageChange={setPage}
+      />
 
       {selectedSlug && <ComicDetailModal slug={selectedSlug} onClose={() => setSelectedSlug(null)} />}
       {jsonModalPath && (
         <JsonResponseModal
           apiPath={jsonModalPath}
-          title="Respon JSON Perpustakaan Komiku"
+          title="Respon JSON Endpoint Perpustakaan"
           onClose={() => setJsonModalPath(null)}
         />
       )}

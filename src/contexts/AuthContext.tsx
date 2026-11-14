@@ -21,7 +21,8 @@ import type { ServerKeyUsage, UserProfile } from '../types';
 
 const MAIN_ADMIN_EMAIL = 'predimahrobi@gmail.com';
 const BOOTSTRAP_ADMIN_EMAILS = new Set([MAIN_ADMIN_EMAIL, 'sp.freemusichub@gmail.com']);
-const EMAIL_SESSION_STORAGE_KEY = 'nusakomik_email_session_token';
+const EMAIL_SESSION_STORAGE_KEY = 'efemmakomik_email_session_token';
+const LEGACY_EMAIL_SESSION_STORAGE_KEY = 'nusakomik_email_session_token';
 
 export function generateApiKey(isAdmin: boolean): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -50,6 +51,10 @@ interface AuthContextValue {
   registerWithEmail: (displayName: string, email: string, password: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   reloadVerificationStatus: () => Promise<boolean>;
+  logoutConfirmOpen: boolean;
+  requestSignOut: () => void;
+  cancelSignOut: () => void;
+  confirmSignOut: () => Promise<void>;
   signOutUser: () => Promise<void>;
   regenerateApiKey: () => Promise<void>;
   refreshUsage: () => Promise<void>;
@@ -68,6 +73,11 @@ function usageToProfile(usage: ServerKeyUsage): UserProfile {
     plan: usage.plan,
     apiKey: usage.apiKey,
     dailyLimit: usage.dailyLimit,
+    monthlyLimit: usage.monthlyLimit,
+    requestsThisMonth: usage.requestsThisMonth,
+    usageMonth: usage.usageMonth,
+    packageId: usage.packageId,
+    packageName: usage.packageName,
     requestsToday: usage.requestsToday,
     requestsTotal: usage.requestsTotal,
     status: usage.status,
@@ -103,7 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [liveUsage, setLiveUsage] = useState<ServerKeyUsage | null>(null);
   const [backendSessionToken, setBackendSessionToken] = useState<string | null>(() => {
     try {
-      return typeof window !== 'undefined' ? window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY) : null;
+      if (typeof window === 'undefined') return null;
+      return (
+        window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY) ||
+        window.localStorage.getItem(LEGACY_EMAIL_SESSION_STORAGE_KEY)
+      );
     } catch {
       return null;
     }
@@ -112,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   const openAuthModal = useCallback(() => {
     setAuthError(null);
@@ -147,6 +162,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const json = (await res.json()) as { status: boolean; data?: ServerKeyUsage };
         if (json.data) {
           setLiveUsage(json.data);
+          setUserProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  plan: json.data!.plan,
+                  role: json.data!.role,
+                  dailyLimit: json.data!.dailyLimit,
+                  monthlyLimit: json.data!.monthlyLimit,
+                  requestsThisMonth: json.data!.requestsThisMonth,
+                  usageMonth: json.data!.usageMonth,
+                  packageId: json.data!.packageId,
+                  packageName: json.data!.packageName,
+                }
+              : prev
+          );
         }
       }
     } catch {
@@ -181,6 +211,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const safeEmail = (fbUser.email || '').slice(0, 254);
 
       if (!snap.exists()) {
+        let freeLimit = 10;
+        try {
+          const settingsRes = await fetch('/api/public/settings');
+          if (settingsRes.ok) {
+            const sJson = (await settingsRes.json()) as { status: boolean; data?: { freeDailyTokens?: number } };
+            if (typeof sJson.data?.freeDailyTokens === 'number' && sJson.data.freeDailyTokens > 0) {
+              freeLimit = sJson.data.freeDailyTokens;
+            }
+          }
+        } catch {
+          // fallback to 10
+        }
+
         const newProfile: UserProfile = {
           uid: fbUser.uid,
           email: safeEmail,
@@ -189,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: isBootstrapAdmin ? 'admin' : 'user',
           plan: isBootstrapAdmin ? 'admin_unlimited' : 'free',
           apiKey: generateApiKey(isBootstrapAdmin),
-          dailyLimit: isBootstrapAdmin ? -1 : 1000,
+          dailyLimit: isBootstrapAdmin ? -1 : freeLimit,
           requestsToday: 0,
           requestsTotal: 0,
           status: 'active',
@@ -275,7 +318,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         const storedToken = (() => {
           try {
-            return window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY);
+            return (
+              window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY) ||
+              window.localStorage.getItem(LEGACY_EMAIL_SESSION_STORAGE_KEY)
+            );
           } catch {
             return null;
           }
@@ -285,6 +331,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!ok) {
             try {
               window.localStorage.removeItem(EMAIL_SESSION_STORAGE_KEY);
+              window.localStorage.removeItem(LEGACY_EMAIL_SESSION_STORAGE_KEY);
             } catch {
               // ignore
             }
@@ -317,6 +364,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const applyBackendSession = useCallback((sessionToken: string, record: ServerKeyUsage) => {
+    try {
+      window.localStorage.setItem(EMAIL_SESSION_STORAGE_KEY, sessionToken);
+    } catch {
+      // ignore storage quota errors
+    }
+    setBackendSessionToken(sessionToken);
+    setLiveUsage(record);
+    setUserProfile(usageToProfile(record));
+    setNeedsEmailVerification(false);
+    setAuthModalOpen(false);
+    setAuthError(null);
+  }, []);
+
   const signInWithEmail = useCallback(
     async (rawEmail: string, password: string) => {
       setAuthError(null);
@@ -327,35 +388,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(msg);
       }
 
-      // Admin Utama server-verified email login
-      if (email === MAIN_ADMIN_EMAIL) {
+      const tryBackendEmailLogin = async (): Promise<boolean> => {
         const res = await fetch('/api/auth/email-login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
+        if (!res.ok) return false;
         const json = (await res.json()) as {
           status: boolean;
-          message?: string;
           sessionToken?: string;
           data?: ServerKeyUsage;
         };
-        if (!res.ok || !json.status || !json.sessionToken || !json.data) {
-          const msg = json.message || 'Email atau password admin utama salah.';
+        if (json.status && json.sessionToken && json.data) {
+          applyBackendSession(json.sessionToken, json.data);
+          return true;
+        }
+        return false;
+      };
+
+      // Admin Utama server-verified email login
+      if (email === MAIN_ADMIN_EMAIL) {
+        const ok = await tryBackendEmailLogin();
+        if (!ok) {
+          const msg = 'Email atau password admin utama salah.';
           setAuthError(msg);
           throw new Error(msg);
         }
-
-        try {
-          window.localStorage.setItem(EMAIL_SESSION_STORAGE_KEY, json.sessionToken);
-        } catch {
-          // ignore storage quota errors
-        }
-        setBackendSessionToken(json.sessionToken);
-        setLiveUsage(json.data);
-        setUserProfile(usageToProfile(json.data));
-        setNeedsEmailVerification(false);
-        setAuthModalOpen(false);
         return;
       }
 
@@ -367,12 +426,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAuthModalOpen(false);
         }
       } catch (err) {
+        const code = (err as { code?: string })?.code || '';
+        const shouldTryBackend =
+          code === 'auth/operation-not-allowed' ||
+          code === 'auth/invalid-credential' ||
+          code === 'auth/user-not-found' ||
+          code === 'auth/wrong-password';
+
+        if (shouldTryBackend) {
+          const ok = await tryBackendEmailLogin();
+          if (ok) return;
+          const msg =
+            code === 'auth/operation-not-allowed'
+              ? 'Email belum terdaftar atau password tidak sesuai. Silakan pilih tab "Daftar Baru" jika belum memiliki akun.'
+              : 'Email atau password tidak sesuai.';
+          setAuthError(msg);
+          throw new Error(msg);
+        }
+
         const msg = mapFirebaseAuthError(err);
         setAuthError(msg);
         throw new Error(msg);
       }
     },
-    []
+    [applyBackendSession]
   );
 
   const registerWithEmail = useCallback(
@@ -395,12 +472,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await sendEmailVerification(cred.user);
         setNeedsEmailVerification(true);
       } catch (err) {
+        const code = (err as { code?: string })?.code || '';
+        if (code === 'auth/operation-not-allowed') {
+          const res = await fetch('/api/auth/email-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName: safeName, email, password }),
+          });
+          const json = (await res.json()) as {
+            status: boolean;
+            message?: string;
+            sessionToken?: string;
+            data?: ServerKeyUsage;
+          };
+          if (res.ok && json.status && json.sessionToken && json.data) {
+            applyBackendSession(json.sessionToken, json.data);
+            return;
+          }
+          const msg = json.message || 'Gagal mendaftarkan akun email.';
+          setAuthError(msg);
+          throw new Error(msg);
+        }
+
         const msg = mapFirebaseAuthError(err);
         setAuthError(msg);
         throw new Error(msg);
       }
     },
-    [signInWithEmail]
+    [signInWithEmail, applyBackendSession]
   );
 
   const resendVerificationEmail = useCallback(async () => {
@@ -430,17 +529,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOutUser = useCallback(async () => {
     try {
       window.localStorage.removeItem(EMAIL_SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(LEGACY_EMAIL_SESSION_STORAGE_KEY);
     } catch {
       // ignore
     }
     setBackendSessionToken(null);
     setNeedsEmailVerification(false);
+    setLogoutConfirmOpen(false);
     if (auth.currentUser) {
       await signOut(auth);
     }
     setUserProfile(null);
     setLiveUsage(null);
   }, []);
+
+  const requestSignOut = useCallback(() => {
+    setLogoutConfirmOpen(true);
+  }, []);
+
+  const cancelSignOut = useCallback(() => {
+    setLogoutConfirmOpen(false);
+  }, []);
+
+  const confirmSignOut = useCallback(async () => {
+    await signOutUser();
+  }, [signOutUser]);
 
   const getIdToken = useCallback(async () => {
     if (firebaseUser) return firebaseUser.getIdToken();
@@ -497,9 +610,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const json = (await res.json()) as { status: boolean; data?: ServerKeyUsage | null };
         if (json.data) {
           setLiveUsage(json.data);
-          if (!firebaseUser) {
-            setUserProfile(usageToProfile(json.data));
-          }
+          setUserProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  role: json.data!.role,
+                  plan: json.data!.plan,
+                  dailyLimit: json.data!.dailyLimit,
+                  monthlyLimit: json.data!.monthlyLimit,
+                  requestsThisMonth: json.data!.requestsThisMonth,
+                  usageMonth: json.data!.usageMonth,
+                  packageId: json.data!.packageId,
+                  packageName: json.data!.packageName,
+                  requestsToday: json.data!.requestsToday,
+                  requestsTotal: json.data!.requestsTotal,
+                  status: json.data!.status,
+                }
+              : usageToProfile(json.data!)
+          );
         }
       }
     } catch {
@@ -525,6 +653,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         registerWithEmail,
         resendVerificationEmail,
         reloadVerificationStatus,
+        logoutConfirmOpen,
+        requestSignOut,
+        cancelSignOut,
+        confirmSignOut,
         signOutUser,
         regenerateApiKey,
         refreshUsage,

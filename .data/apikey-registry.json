@@ -7,11 +7,13 @@
     "role": "admin",
     "plan": "admin_unlimited",
     "dailyLimit": -1,
-    "requestsToday": 2,
-    "requestsTotal": 2,
+    "requestsToday": 4,
+    "requestsTotal": 4,
     "usageDate": "2026-11-15",
     "status": "active",
-    "lastUsedAt": "2026-11-14T17:21:38.506Z",
-    "lastUserAgent": "node"
+    "lastUsedAt": "2026-11-14T19:33:18.730Z",
+    "lastUserAgent": "node",
+    "requestsThisMonth": 1,
+    "usageMonth": "2026-11"
   }
 ]

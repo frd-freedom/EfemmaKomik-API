@@ -29,7 +29,7 @@ export function StarRating({ rating, compact = false, showOutOfFive = false }: S
                 viewBox="0 0 24 24"
                 width={starSize}
                 height={starSize}
-                className="text-slate-200 fill-current block"
+                className="text-slate-200 dark:text-slate-700 fill-current block"
               >
                 <path d="M12 2.2l2.92 5.91 6.53.95-4.72 4.6 1.11 6.5L12 17.09l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.2z" />
               </svg>
@@ -54,15 +54,15 @@ export function StarRating({ rating, compact = false, showOutOfFive = false }: S
       </span>
       {hasRating ? (
         <span
-          className={`font-semibold text-slate-800 ${
+          className={`font-semibold text-slate-800 dark:text-slate-200 ${
             compact ? 'text-[11px]' : 'text-xs'
           }`}
         >
           {normalized.toFixed(1)}
-          {showOutOfFive && <span className="font-normal text-slate-500"> / 5</span>}
+          {showOutOfFive && <span className="font-normal text-slate-500 dark:text-slate-400"> / 5</span>}
         </span>
       ) : (
-        <span className={`font-medium text-slate-400 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+        <span className={`font-medium text-slate-400 dark:text-slate-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>
           Belum ada rating
         </span>
       )}

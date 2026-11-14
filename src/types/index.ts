@@ -11,6 +11,11 @@ export interface UserProfile {
   plan: UserPlan;
   apiKey: string;
   dailyLimit: number;
+  monthlyLimit?: number;
+  requestsThisMonth?: number;
+  usageMonth?: string;
+  packageId?: string;
+  packageName?: string;
   requestsToday: number;
   requestsTotal: number;
   status: UserStatus;
@@ -118,6 +123,15 @@ export interface CacheStats {
   lastFlushAt: string | null;
 }
 
+export interface PublicStats {
+  total_titles: number;
+  total_pages?: number;
+  total_requests: number;
+  requests_today: number;
+  api_v1_requests: number;
+  cache: CacheStats;
+}
+
 export interface ApiAccessLog {
   id: string;
   timestamp: string;
@@ -139,10 +153,42 @@ export interface ServerKeyUsage {
   role: UserRole;
   plan: UserPlan;
   dailyLimit: number;
+  monthlyLimit?: number;
+  requestsThisMonth?: number;
+  usageMonth?: string;
+  packageId?: string;
+  packageName?: string;
   requestsToday: number;
   requestsTotal: number;
   usageDate: string;
   status: UserStatus;
   lastUsedAt: string | null;
   lastUserAgent: string | null;
+}
+
+export interface PricingPackage {
+  id: string;
+  name: string;
+  tagline: string;
+  tokensPerMonth: number;
+  priceIdr: number;
+  billingPeriodLabel: string;
+  features: string[];
+  highlighted: boolean;
+  active: boolean;
+  ctaLabel: string;
+}
+
+export interface SiteSettings {
+  freeDailyTokens: number;
+  freePlanName: string;
+  freePlanDescription: string;
+  ownerWhatsappNumber: string;
+  ownerWhatsappName: string;
+  whatsappMessageTemplate: string;
+  pricingHeadline: string;
+  pricingSubtitle: string;
+  billingNotice: string;
+  packages: PricingPackage[];
+  updatedAt: string;
 }

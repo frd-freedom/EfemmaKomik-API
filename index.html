@@ -3,17 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NusaKomik API — REST API Manga, Manhwa & Manhua Bahasa Indonesia</title>
-    <meta name="description" content="Platform penyedia REST API baca manga, manhwa, dan manhua bahasa Indonesia terupdate, terpopuler, dan trending dengan sistem caching efisien, proteksi anti-403 untuk cURL, autentikasi Google OAuth, API Key per pengguna, serta dashboard admin." />
-    <meta property="og:title" content="NusaKomik API — REST API Manga, Manhwa & Manhua Bahasa Indonesia" />
-    <meta property="og:description" content="Platform penyedia REST API baca manga, manhwa, dan manhua bahasa Indonesia terupdate, terpopuler, dan trending dengan caching efisien dan dukungan cURL anti-403." />
+    <title>EfemmaKomik-API — REST API Manga, Manhwa & Manhua Bahasa Indonesia</title>
+    <meta name="description" content="Platform penyedia REST API Manga, Manhwa, dan Manhua Bahasa Indonesia dengan endpoint JSON terstruktur, respon cURL 200 OK, caching L1, autentikasi API Key, dan console pengujian real-time." />
+    <meta property="og:title" content="EfemmaKomik-API — REST API Manga, Manhwa & Manhua Bahasa Indonesia" />
+    <meta property="og:description" content="REST API Manga, Manhwa, dan Manhua Bahasa Indonesia dengan respon cURL 200 OK, caching L1, dan manajemen API Key." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('efemmakomik_theme');
+          if (saved === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-rose-100 selection:text-rose-900">
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-rose-100 selection:text-rose-900 dark:selection:bg-rose-900/60 dark:selection:text-rose-100 transition-colors duration-150">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

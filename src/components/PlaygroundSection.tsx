@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Copy, Download, ExternalLink, Lock, Play } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { JsonCodeBlock } from './JsonCodeBlock';
 import { SelectDropdown } from './SelectDropdown';
 import type { KomikuFilters } from '../types';
 
@@ -26,13 +27,13 @@ const ENDPOINT_OPTIONS: Array<{ id: EndpointId; label: string; pathPreview: stri
   { id: 'rekomendasi', label: 'Komik Rekomendasi', pathPreview: '/api/v1/komik/rekomendasi' },
   { id: 'berwarna', label: 'Komik Berwarna (Full Color)', pathPreview: '/api/v1/komik/berwarna' },
   { id: 'type', label: 'Berdasarkan Tipe (Manga/Manhwa/Manhua)', pathPreview: '/api/v1/komik/type/:type' },
-  { id: 'genre', label: 'Berdasarkan Genre Komiku', pathPreview: '/api/v1/komik/genre/:genre' },
-  { id: 'perpustakaan', label: 'Perpustakaan Komiku (Pagination)', pathPreview: '/api/v1/komik/perpustakaan' },
-  { id: 'anime_perpustakaan', label: 'Perpustakaan Anime Komiku (Pagination)', pathPreview: '/api/v1/anime/perpustakaan' },
+  { id: 'genre', label: 'Berdasarkan Genre', pathPreview: '/api/v1/komik/genre/:genre' },
+  { id: 'perpustakaan', label: 'Perpustakaan Lengkap (Pagination)', pathPreview: '/api/v1/komik/perpustakaan' },
+  { id: 'anime_perpustakaan', label: 'Perpustakaan Anime (Pagination)', pathPreview: '/api/v1/anime/perpustakaan' },
   { id: 'search', label: 'Pencarian Komik', pathPreview: '/api/v1/komik/search' },
-  { id: 'detail', label: 'Detail Komik (Bintang, Usia, Author, Rilis)', pathPreview: '/api/v1/komik/detail/:slug' },
+  { id: 'detail', label: 'Detail Komik (Rating, Author, Rilis)', pathPreview: '/api/v1/komik/detail/:slug' },
   { id: 'chapter', label: 'Baca Chapter & Halaman Gambar', pathPreview: '/api/v1/komik/chapter/:chapterSlug' },
-  { id: 'genres', label: 'Daftar Semua Genre Komiku', pathPreview: '/api/v1/komik/genres' },
+  { id: 'genres', label: 'Daftar Semua Genre', pathPreview: '/api/v1/komik/genres' },
 ];
 
 export function PlaygroundSection() {
@@ -49,10 +50,11 @@ export function PlaygroundSection() {
   const [limitParam, setLimitParam] = useState('10');
   const [running, setRunning] = useState(false);
   const [statusLine, setStatusLine] = useState<string | null>(null);
-  const [headersInfo, setHeadersInfo] = useState<Record<string, string>>({});
+  const [headersList, setHeadersList] = useState<Array<[string, string]>>([]);
   const [responseJson, setResponseJson] = useState<string>('');
-  const [copiedJson, setCopiedJson] = useState(false);
-  const [copiedCurl, setCopiedCurl] = useState(false);
+  const [outputTab, setOutputTab] = useState<'curl' | 'json'>('curl');
+  const [copiedOutput, setCopiedOutput] = useState(false);
+  const [copiedCurlCmd, setCopiedCurlCmd] = useState(false);
 
   useEffect(() => {
     fetch('/api/public/filters')
@@ -101,12 +103,12 @@ export function PlaygroundSection() {
   const rawTabUrl = effectiveKey
     ? `${requestPath}${requestPath.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(effectiveKey)}`
     : '';
-  const curlCommand = `curl -i -H "x-api-key: ${displayKey}" "${origin}${requestPath}"`;
+  const curlCommand = `curl -i -sS -H "x-api-key: ${displayKey}" "${origin}${requestPath}"`;
 
   const runRequest = async () => {
     if (!effectiveKey) {
-      setStatusLine('401 API Key Diperlukan');
-      setHeadersInfo({});
+      setStatusLine('HTTP/1.1 401 Unauthorized');
+      setHeadersList([['content-type', 'application/json; charset=utf-8']]);
       setResponseJson(
         JSON.stringify(
           {
@@ -128,38 +130,44 @@ export function PlaygroundSection() {
           Accept: 'application/json',
         },
       });
-      setStatusLine(`${res.status} ${res.statusText}`);
-      const capturedHeaders: Record<string, string> = {};
+      setStatusLine(`HTTP/1.1 ${res.status} ${res.statusText || (res.status === 200 ? 'OK' : '')}`.trim());
+      const capturedHeaders: Array<[string, string]> = [];
       for (const h of [
-        'X-Cache',
-        'X-Cache-TTL',
-        'X-Response-Time',
-        'X-RateLimit-Limit',
-        'X-RateLimit-Remaining',
-        'X-Anti403-Status',
+        'content-type',
+        'x-cache',
+        'x-cache-ttl',
+        'x-response-time',
+        'x-ratelimit-limit',
+        'x-ratelimit-remaining',
+        'x-anti403-status',
+        'etag',
       ]) {
         const val = res.headers.get(h);
-        if (val) capturedHeaders[h] = val;
+        if (val) capturedHeaders.push([h, val]);
       }
-      setHeadersInfo(capturedHeaders);
+      setHeadersList(capturedHeaders);
       const data = await res.json();
       setResponseJson(JSON.stringify(data, null, 2));
       if (userProfile) {
         void refreshUsage();
       }
     } catch (err) {
-      setStatusLine('Error');
+      setStatusLine('HTTP/1.1 500 Error');
       setResponseJson(JSON.stringify({ error: err instanceof Error ? err.message : 'Request gagal' }, null, 2));
     } finally {
       setRunning(false);
     }
   };
 
-  const copyJson = () => {
+  const fullCurlResponseText = statusLine
+    ? `${statusLine}\n${headersList.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${responseJson}`
+    : responseJson;
+
+  const copyOutput = () => {
     if (!responseJson) return;
-    void navigator.clipboard.writeText(responseJson);
-    setCopiedJson(true);
-    setTimeout(() => setCopiedJson(false), 1800);
+    void navigator.clipboard.writeText(outputTab === 'curl' ? fullCurlResponseText : responseJson);
+    setCopiedOutput(true);
+    setTimeout(() => setCopiedOutput(false), 1800);
   };
 
   const downloadJson = () => {
@@ -168,43 +176,44 @@ export function PlaygroundSection() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `komiku-${endpoint}.json`;
+    a.download = `efemmakomik-${endpoint}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   };
 
-  const copyCurl = () => {
+  const copyCurlCmd = () => {
     void navigator.clipboard.writeText(curlCommand);
-    setCopiedCurl(true);
-    setTimeout(() => setCopiedCurl(false), 1800);
+    setCopiedCurlCmd(true);
+    setTimeout(() => setCopiedCurlCmd(false), 1800);
   };
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-slate-200 pb-5 sm:pb-6">
-        <p className="text-xs font-medium tracking-wide text-rose-700">
-          Zero-cURL JSON Retriever · Sesi Browser Langsung
+      <div className="border-b border-slate-200 pb-5 sm:pb-6 dark:border-slate-800">
+        <p className="text-xs font-semibold tracking-wide text-rose-700 dark:text-rose-400">
+          EfemmaKomik-API · Interactive REST Console
         </p>
-        <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-          Ambil Respon JSON Langsung (Tanpa Perlu cURL)
+        <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">
+          Akses JSON &amp; Respon cURL (200 OK)
         </h1>
-        <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          Karena domain preview AI Studio memproteksi akses CLI luar dengan halaman Cookie check, gunakan pengambil JSON di bawah untuk memanggil endpoint Komiku langsung dari browser, mengunduh file <code className="font-mono text-slate-900">.json</code>, atau membuka URL JSON mentah di tab baru.
+        <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+          Uji seluruh endpoint REST API secara langsung dan dapatkan respon lengkap{' '}
+          <code className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">HTTP/1.1 200 OK</code> beserta header cURL dan payload JSON berwarna.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Controls Column */}
-        <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 lg:col-span-5">
+        <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 dark:border-slate-800 dark:bg-slate-900 lg:col-span-5">
           <div>
-            <label htmlFor="pg-endpoint" className="block text-xs font-semibold text-slate-700">
-              Pilih Endpoint Komiku
+            <label htmlFor="pg-endpoint" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Pilih Endpoint API
             </label>
             <SelectDropdown
               id="pg-endpoint"
-              ariaLabel="Pilih endpoint Komiku"
+              ariaLabel="Pilih endpoint API"
               value={endpoint}
               onChange={(next) => setEndpoint(next as EndpointId)}
               searchable
@@ -218,7 +227,7 @@ export function PlaygroundSection() {
           </div>
 
           <div>
-            <label htmlFor="pg-apikey" className="block text-xs font-semibold text-slate-700">
+            <label htmlFor="pg-apikey" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               API Key (`x-api-key` atau `?apikey=`)
             </label>
             <input
@@ -227,13 +236,13 @@ export function PlaygroundSection() {
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               placeholder={userProfile?.apiKey || 'Masuk untuk mendapatkan API Key pribadi'}
-              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-rose-500"
             />
             {!effectiveKey && (
               <button
                 type="button"
                 onClick={openAuthModal}
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 hover:text-rose-800"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300"
               >
                 <Lock className="h-3.5 w-3.5" />
                 Masuk via Email atau Google untuk ambil API Key
@@ -243,7 +252,7 @@ export function PlaygroundSection() {
 
           {['terupdate', 'terpopuler', 'trending', 'rekomendasi', 'berwarna', 'type', 'perpustakaan'].includes(endpoint) && (
             <div>
-              <label htmlFor="pg-type" className="block text-xs font-semibold text-slate-700">
+              <label htmlFor="pg-type" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Tipe Komik
               </label>
               <SelectDropdown
@@ -264,12 +273,12 @@ export function PlaygroundSection() {
 
           {['terupdate', 'terpopuler', 'trending', 'rekomendasi', 'berwarna', 'genre', 'perpustakaan'].includes(endpoint) && (
             <div>
-              <label htmlFor="pg-genre" className="block text-xs font-semibold text-slate-700">
-                Genre Komiku
+              <label htmlFor="pg-genre" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Genre
               </label>
               <SelectDropdown
                 id="pg-genre"
-                ariaLabel="Genre Komiku"
+                ariaLabel="Filter genre"
                 value={genreParam === 'all' && endpoint === 'genre' ? 'Action' : genreParam}
                 onChange={setGenreParam}
                 searchable
@@ -286,7 +295,7 @@ export function PlaygroundSection() {
           {endpoint !== 'detail' && endpoint !== 'chapter' && endpoint !== 'genres' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="pg-page" className="block text-xs font-semibold text-slate-700">
+                <label htmlFor="pg-page" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Halaman (`page`)
                 </label>
                 <input
@@ -295,11 +304,11 @@ export function PlaygroundSection() {
                   min={1}
                   value={pageParam}
                   onChange={(e) => setPageParam(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-rose-500"
                 />
               </div>
               <div>
-                <label htmlFor="pg-limit" className="block text-xs font-semibold text-slate-700">
+                <label htmlFor="pg-limit" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Limit (`limit`)
                 </label>
                 <input
@@ -309,7 +318,7 @@ export function PlaygroundSection() {
                   max={48}
                   value={limitParam}
                   onChange={(e) => setLimitParam(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-rose-500"
                 />
               </div>
             </div>
@@ -317,7 +326,7 @@ export function PlaygroundSection() {
 
           {endpoint === 'search' && (
             <div>
-              <label htmlFor="pg-q" className="block text-xs font-semibold text-slate-700">
+              <label htmlFor="pg-q" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Kata Kunci (`q`)
               </label>
               <input
@@ -325,37 +334,37 @@ export function PlaygroundSection() {
                 type="text"
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-rose-700 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-rose-500"
               />
             </div>
           )}
 
           {endpoint === 'detail' && (
             <div>
-              <label htmlFor="pg-slug" className="block text-xs font-semibold text-slate-700">
-                Slug Komik Komiku
+              <label htmlFor="pg-slug" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Slug Komik
               </label>
               <input
                 id="pg-slug"
                 type="text"
                 value={slugParam}
                 onChange={(e) => setSlugParam(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-rose-700 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-rose-500"
               />
             </div>
           )}
 
           {endpoint === 'chapter' && (
             <div>
-              <label htmlFor="pg-chapter" className="block text-xs font-semibold text-slate-700">
-                Chapter Slug Komiku
+              <label htmlFor="pg-chapter" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Chapter Slug
               </label>
               <input
                 id="pg-chapter"
                 type="text"
                 value={chapterParam}
                 onChange={(e) => setChapterParam(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-rose-700 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-rose-500"
               />
             </div>
           )}
@@ -368,7 +377,7 @@ export function PlaygroundSection() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-800 disabled:opacity-50"
             >
               <Play className="h-4 w-4" />
-              {running ? 'Mengambil Respon JSON...' : 'Ambil Respon JSON (Tanpa cURL)'}
+              {running ? 'Mengambil Respon 200 OK...' : 'Kirim Request & Tampilkan Respon cURL'}
             </button>
 
             {rawTabUrl ? (
@@ -376,64 +385,90 @@ export function PlaygroundSection() {
                 href={rawTabUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                Buka Raw JSON di Tab Browser Baru
+                Buka Link Raw JSON
               </a>
             ) : (
               <button
                 type="button"
                 onClick={openAuthModal}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
               >
-                <Lock className="h-3.5 w-3.5 text-rose-700" />
-                Masuk untuk Buka Raw JSON
+                <Lock className="h-3.5 w-3.5 text-rose-700 dark:text-rose-400" />
+                Masuk untuk Buka Link Raw JSON
               </button>
             )}
           </div>
 
-          <div className="border-t border-slate-200 pt-4 space-y-2">
+          <div className="space-y-2 border-t border-slate-200 pt-4 dark:border-slate-800">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700">Opsional: cURL (Untuk Deploy Publik)</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Perintah cURL</span>
               <button
                 type="button"
-                onClick={copyCurl}
-                className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800"
+                onClick={copyCurlCmd}
+                className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300"
               >
-                {copiedCurl ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                {copiedCurl ? 'Tersalin' : 'Salin cURL'}
+                {copiedCurlCmd ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiedCurlCmd ? 'Tersalin' : 'Salin cURL'}
               </button>
             </div>
-            <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-slate-200">
+            <pre className="overflow-x-auto code-scroll rounded-lg bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-sky-200 dark:border dark:border-slate-800">
               {curlCommand}
             </pre>
           </div>
         </div>
 
         {/* Output Column */}
-        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-950 text-slate-100 lg:col-span-7">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3 text-xs">
-            <span className="font-mono text-slate-300 truncate">{requestPath}</span>
-            <div className="flex items-center gap-2">
+        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-950 text-slate-100 dark:border-slate-800 lg:col-span-7">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/70 px-4 py-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-[11px] font-semibold text-sky-400 shrink-0">GET</span>
+              <span className="font-mono text-slate-300 truncate">{requestPath}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
               {statusLine && (
                 <span
                   className={`font-mono font-semibold ${
-                    statusLine.startsWith('200') ? 'text-emerald-400' : 'text-amber-400'
+                    statusLine.includes('200') ? 'text-emerald-400' : 'text-amber-400'
                   }`}
                 >
                   {statusLine}
                 </span>
               )}
+
+              <div className="flex items-center rounded-md bg-slate-950 p-0.5 border border-slate-800 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setOutputTab('curl')}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors whitespace-nowrap ${
+                    outputTab === 'curl' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Respon cURL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputTab('json')}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors whitespace-nowrap ${
+                    outputTab === 'json' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  JSON Body
+                </button>
+              </div>
+
               {responseJson && (
                 <>
                   <button
                     type="button"
-                    onClick={copyJson}
+                    onClick={copyOutput}
                     className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
                   >
-                    {copiedJson ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    {copiedJson ? 'Tersalin' : 'Salin'}
+                    {copiedOutput ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    {copiedOutput ? 'Tersalin' : 'Salin'}
                   </button>
                   <button
                     type="button"
@@ -448,19 +483,20 @@ export function PlaygroundSection() {
             </div>
           </div>
 
-          {Object.keys(headersInfo).length > 0 && (
-            <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-slate-800 bg-slate-900/60 px-4 py-2 font-mono text-[11px] text-slate-300 tabular-nums">
-              {Object.entries(headersInfo).map(([k, v]) => (
-                <span key={k}>
-                  <span className="text-slate-500">{k}:</span> {v}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <pre className="min-h-[420px] max-h-[620px] flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-slate-100">
-            {responseJson || '// Klik "Ambil Respon JSON (Tanpa cURL)" untuk menarik respon JSON langsung dari Komiku.org.'}
-          </pre>
+          <div className="min-h-[440px] max-h-[640px] flex-1 overflow-auto code-scroll p-4">
+            {responseJson ? (
+              <JsonCodeBlock
+                json={responseJson}
+                httpStatusLine={outputTab === 'curl' && statusLine ? statusLine : undefined}
+                httpHeaders={outputTab === 'curl' && headersList.length > 0 ? headersList : undefined}
+                showLineNumbers
+              />
+            ) : (
+              <div className="font-mono text-xs leading-relaxed text-slate-500">
+                Klik &quot;Kirim Request &amp; Tampilkan Respon cURL&quot; untuk melihat respon HTTP/1.1 200 OK beserta JSON berwarna.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

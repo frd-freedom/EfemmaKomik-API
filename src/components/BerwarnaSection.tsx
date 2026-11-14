@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Code2, Search } from 'lucide-react';
+import { BookOpen, Code2, Search } from 'lucide-react';
 import type { CatalogPagination, ComicSummary, ComicType, KomikuFilters } from '../types';
 import { ComicDetailModal } from './ComicDetailModal';
 import { JsonResponseModal } from './JsonResponseModal';
+import { Pagination } from './Pagination';
 import { SelectDropdown } from './SelectDropdown';
 import { StarRating } from './StarRating';
 
@@ -11,7 +12,6 @@ export function BerwarnaSection() {
   const [genreFilter, setGenreFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [jumpPageInput, setJumpPageInput] = useState('');
 
   const [genresList, setGenresList] = useState<string[]>([]);
   const [items, setItems] = useState<ComicSummary[]>([]);
@@ -76,28 +76,6 @@ export function BerwarnaSection() {
     return `/api/v1/komik/berwarna?${params.toString()}`;
   };
 
-  const getPageWindow = (): number[] => {
-    const total = Math.max(1, pagination.total_pages);
-    const current = Math.min(page, total);
-    const start = Math.max(1, current - 2);
-    const end = Math.min(total, start + 4);
-    const adjustedStart = Math.max(1, end - 4);
-    const pages: number[] = [];
-    for (let i = adjustedStart; i <= end; i += 1) {
-      pages.push(i);
-    }
-    return pages;
-  };
-
-  const handleJumpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const num = Number.parseInt(jumpPageInput, 10);
-    if (!Number.isNaN(num) && num >= 1 && num <= pagination.total_pages) {
-      setPage(num);
-      setJumpPageInput('');
-    }
-  };
-
   const handleCoverError = (comic: ComicSummary) => {
     setCoverStage((prev) => {
       const current = prev[comic.id];
@@ -111,33 +89,33 @@ export function BerwarnaSection() {
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:pb-6 md:flex-row md:items-end">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:pb-6 md:flex-row md:items-end dark:border-slate-800">
         <div>
-          <p className="text-xs font-medium tracking-wide text-rose-700">
-            Koleksi Komik Berwarna Komiku.org · Full Color & Pagination
+          <p className="text-xs font-semibold tracking-wide text-rose-700 dark:text-rose-400">
+            Endpoint /api/v1/komik/berwarna · Full Color &amp; Pagination
           </p>
-          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            Komik Berwarna (Full Color)
+          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">
+            API Komik Berwarna (Full Color)
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Menampilkan komik berwarna langsung dari kategori berwarna Komiku.org lengkap dengan navigasi halaman, rating bintang, filter tipe/genre, dan endpoint JSON siap pakai.
+          <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+            Menyajikan endpoint data komik full color dengan navigasi halaman, rating pasar, filter tipe &amp; genre, serta inspeksi respon JSON/cURL langsung.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setJsonModalPath(buildV1BerwarnaPath())}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap sm:w-auto sm:shrink-0"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 whitespace-nowrap sm:w-auto sm:shrink-0 dark:border dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
         >
-          <Code2 className="h-4 w-4 text-rose-400" />
-          Ambil Respon JSON Halaman Ini
+          <Code2 className="h-4 w-4 text-emerald-400" />
+          Ambil Respon JSON &amp; cURL
         </button>
       </div>
 
       {/* Filter Bar */}
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1 dark:bg-slate-950 dark:border dark:border-slate-800">
             {(['all', 'Manga', 'Manhwa', 'Manhua'] as const).map((t) => (
               <button
                 key={t}
@@ -147,7 +125,9 @@ export function BerwarnaSection() {
                   setPage(1);
                 }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  typeFilter === t ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  typeFilter === t
+                    ? 'bg-white text-slate-950 shadow-xs dark:bg-slate-800 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
               >
                 {t === 'all' ? 'Semua Tipe' : t}
@@ -179,21 +159,21 @@ export function BerwarnaSection() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari di halaman ini..."
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-rose-500"
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Pagination Info */}
-      <div className="flex flex-col gap-1.5 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+      {/* Endpoint Path Strip */}
+      <div className="flex flex-col gap-1.5 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between dark:text-slate-400">
         <p className="tabular-nums">
-          Halaman <span className="font-semibold text-slate-900">{pagination.page}</span> dari{' '}
-          <span className="font-semibold text-slate-900">{pagination.total_pages.toLocaleString('id-ID')}</span> · Menampilkan{' '}
-          <span className="font-semibold text-slate-900">{items.length}</span> komik berwarna
+          Halaman <span className="font-semibold text-slate-900 dark:text-slate-100">{pagination.page}</span> dari{' '}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{pagination.total_pages.toLocaleString('id-ID')}</span> · Menampilkan{' '}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{items.length}</span> judul berwarna
         </p>
-        <p className="font-mono text-[11px] text-slate-500 truncate max-w-full">{buildV1BerwarnaPath()}</p>
+        <p className="font-mono text-[11px] text-slate-500 truncate max-w-full dark:text-slate-400">GET {buildV1BerwarnaPath()}</p>
       </div>
 
       {/* Grid */}
@@ -201,15 +181,15 @@ export function BerwarnaSection() {
         <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:grid-cols-5">
           {Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="space-y-2.5">
-              <div className="aspect-[3/4] rounded-lg bg-slate-200/70 animate-pulse" />
-              <div className="h-4 w-4/5 rounded bg-slate-200/70 animate-pulse" />
-              <div className="h-3 w-3/5 rounded bg-slate-200/70 animate-pulse" />
+              <div className="aspect-[3/4] rounded-lg bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
+              <div className="h-4 w-4/5 rounded bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
+              <div className="h-3 w-3/5 rounded bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
             </div>
           ))}
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center sm:p-10">
-          <p className="text-sm font-medium text-slate-900">
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center sm:p-10 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
             Tidak ada komik berwarna di halaman {page} untuk filter ini.
           </p>
           <button
@@ -220,7 +200,7 @@ export function BerwarnaSection() {
               setSearchQuery('');
               setPage(1);
             }}
-            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Reset Filter
           </button>
@@ -237,7 +217,7 @@ export function BerwarnaSection() {
                 onClick={() => setSelectedSlug(comic.slug)}
                 className="group flex flex-col text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-rose-700"
               >
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
                   {stage === 'broken' || !imgSrc ? (
                     <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-3 text-center text-white">
                       <BookOpen className="mb-2 h-6 w-6 text-rose-400" />
@@ -261,13 +241,13 @@ export function BerwarnaSection() {
                 </div>
 
                 <div className="mt-2 space-y-1">
-                  <h3 className="font-display text-sm font-semibold leading-snug text-slate-900 line-clamp-2 group-hover:text-rose-700">
+                  <h3 className="font-display text-sm font-semibold leading-snug text-slate-900 line-clamp-2 group-hover:text-rose-700 dark:text-slate-100 dark:group-hover:text-rose-400">
                     {comic.title}
                   </h3>
                   <div className="flex items-center justify-between gap-2">
                     <StarRating rating={comic.rating} compact />
                   </div>
-                  <p className="text-xs text-slate-500 truncate tabular-nums">
+                  <p className="text-xs text-slate-500 truncate tabular-nums dark:text-slate-400">
                     <span>{comic.type}</span>
                     <span className="mx-1.5" aria-hidden="true">·</span>
                     <span>{comic.updated_label}</span>
@@ -279,74 +259,21 @@ export function BerwarnaSection() {
         </div>
       )}
 
-      {/* Full Responsive Pagination Bar */}
-      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 sm:flex-row sm:px-5">
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <button
-            type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 sm:px-3"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="hidden xs:inline sm:inline">Sebelumnya</span>
-          </button>
-
-          {getPageWindow().map((pNum) => (
-            <button
-              key={pNum}
-              type="button"
-              disabled={loading}
-              onClick={() => setPage(pNum)}
-              className={`min-w-[34px] rounded-lg px-2.5 py-1.5 font-mono text-xs font-medium tabular-nums transition-colors ${
-                pNum === page
-                  ? 'bg-rose-700 text-white'
-                  : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              {pNum}
-            </button>
-          ))}
-
-          <button
-            type="button"
-            disabled={page >= pagination.total_pages || loading}
-            onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 sm:px-3"
-          >
-            <span className="hidden xs:inline sm:inline">Berikutnya</span>
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleJumpSubmit} className="flex items-center gap-2 text-xs">
-          <label htmlFor="bw-jump-page" className="text-slate-600 whitespace-nowrap">
-            Lompat ke hal:
-          </label>
-          <input
-            id="bw-jump-page"
-            type="number"
-            min={1}
-            max={pagination.total_pages}
-            value={jumpPageInput}
-            onChange={(e) => setJumpPageInput(e.target.value)}
-            placeholder={String(page)}
-            className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-xs text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-800 hover:bg-slate-100"
-          >
-            Buka
-          </button>
-        </form>
-      </div>
+      <Pagination
+        page={page}
+        totalPages={pagination.total_pages}
+        totalItems={pagination.total_items}
+        itemCount={items.length}
+        itemLabel="judul berwarna"
+        loading={loading}
+        onPageChange={setPage}
+      />
 
       {selectedSlug && <ComicDetailModal slug={selectedSlug} onClose={() => setSelectedSlug(null)} />}
       {jsonModalPath && (
         <JsonResponseModal
           apiPath={jsonModalPath}
-          title="Respon JSON Komik Berwarna Komiku"
+          title="Respon JSON Endpoint Berwarna"
           onClose={() => setJsonModalPath(null)}
         />
       )}

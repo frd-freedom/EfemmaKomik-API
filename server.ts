@@ -9,13 +9,11 @@ import {
   getKomikuFilters,
 } from './server/comicService.ts';
 import {
-  MAIN_ADMIN_EMAIL,
   generateServerApiKey,
   isBootstrapAdminEmail,
   issueSessionToken,
   keyStore,
   verifyFirebaseIdToken,
-  verifyMainAdminCredentials,
   verifySessionToken,
 } from './server/keyStore.ts';
 
@@ -80,7 +78,7 @@ async function startServer() {
   // Anti-403 & CORS Headers Middleware
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
       'Content-Type, Authorization, X-API-Key, x-api-key, Accept, User-Agent'
@@ -102,7 +100,7 @@ async function startServer() {
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: true,
-      service: 'NusaKomik API (Komiku.org)',
+      service: 'EfemmaKomik-API',
       curl_ready: true,
       timestamp: new Date().toISOString(),
     });
@@ -110,15 +108,25 @@ async function startServer() {
 
   // Public Web UI Endpoints (do not burn user API key quota)
   app.get('/api/public/stats', (_req: Request, res: Response) => {
+    const reqStats = keyStore.getGlobalRequestStats();
     res.json({
       status: true,
       data: {
         total_titles: 8100,
         total_pages: 162,
-        upstream_source: 'komiku.org',
+        total_requests: reqStats.totalRequests,
+        requests_today: reqStats.requestsToday,
+        api_v1_requests: reqStats.apiV1Requests,
         cache: cache.getStats(),
         curl_anti_403: 'active',
       },
+    });
+  });
+
+  app.get('/api/public/settings', (_req: Request, res: Response) => {
+    res.json({
+      status: true,
+      data: keyStore.getSiteSettings(),
     });
   });
 
@@ -151,6 +159,7 @@ async function startServer() {
     const limit = Number(req.query.limit || 24);
 
     try {
+      keyStore.recordRequest('public');
       const cacheKey = `public:catalog:${category}:${type}:${genre}:${status}:${sort || ''}:${period || ''}:${q}:${page}:${limit}`;
       const result = await cache.getOrFetch(
         cacheKey,
@@ -175,6 +184,7 @@ async function startServer() {
   });
 
   app.get('/api/public/detail/:slug', async (req: Request, res: Response) => {
+    keyStore.recordRequest('public');
     const slug = String(req.params.slug);
     const result = await cache.getOrFetch(
       `detail:${slug}`,
@@ -182,7 +192,7 @@ async function startServer() {
       { softTtlMs: 900_000, staleTtlMs: 1_800_000 }
     );
     if (!result.data) {
-      res.status(404).json({ status: false, code: 404, message: 'Komik tidak ditemukan di Komiku.' });
+      res.status(404).json({ status: false, code: 404, message: 'Komik tidak ditemukan.' });
       return;
     }
     res.setHeader('X-Cache', result.cacheStatus);
@@ -190,6 +200,7 @@ async function startServer() {
   });
 
   app.get('/api/public/chapter/:chapterSlug', async (req: Request, res: Response) => {
+    keyStore.recordRequest('public');
     const chapterSlug = String(req.params.chapterSlug);
     const result = await cache.getOrFetch(
       `chapter:${chapterSlug}`,
@@ -197,7 +208,7 @@ async function startServer() {
       { softTtlMs: 1_800_000, staleTtlMs: 3_600_000 }
     );
     if (!result.data) {
-      res.status(404).json({ status: false, code: 404, message: 'Chapter tidak ditemukan di Komiku.' });
+      res.status(404).json({ status: false, code: 404, message: 'Chapter tidak ditemukan.' });
       return;
     }
     res.setHeader('X-Cache', result.cacheStatus);
@@ -260,7 +271,34 @@ async function startServer() {
     res.status(502).json({ status: false, code: 502, message: 'Gagal mengambil gambar upstream.' });
   });
 
-  // Main Admin & Session Email Login
+  // Email/Password Registration & Login (supports Admin Utama & local fallback accounts)
+  app.post('/api/auth/email-register', (req: Request, res: Response) => {
+    const body = req.body as { displayName?: string; email?: string; password?: string };
+    const displayName = String(body?.displayName || '');
+    const email = String(body?.email || '').trim().toLowerCase();
+    const password = String(body?.password || '');
+
+    if (!email || !password) {
+      res.status(400).json({ status: false, message: 'Email dan password wajib diisi.' });
+      return;
+    }
+
+    const result = keyStore.registerEmailAccount(displayName, email, password);
+    if (!result.ok) {
+      res.status(result.status).json({ status: false, message: result.message });
+      return;
+    }
+
+    const sessionToken = issueSessionToken({
+      uid: result.record.uid,
+      email: result.record.email,
+      displayName: result.record.displayName,
+      role: result.record.role,
+    });
+
+    res.json({ status: true, sessionToken, data: result.record });
+  });
+
   app.post('/api/auth/email-login', (req: Request, res: Response) => {
     const body = req.body as { email?: string; password?: string };
     const email = String(body?.email || '').trim().toLowerCase();
@@ -271,25 +309,17 @@ async function startServer() {
       return;
     }
 
-    if (email !== MAIN_ADMIN_EMAIL) {
-      res.status(401).json({
-        status: false,
-        message: 'Gunakan autentikasi Firebase Email/Password atau Google OAuth untuk akun reguler.',
-      });
+    const record = keyStore.verifyEmailAccountCredentials(email, password);
+    if (!record) {
+      res.status(401).json({ status: false, message: 'Email atau password tidak sesuai.' });
       return;
     }
 
-    if (!verifyMainAdminCredentials(email, password)) {
-      res.status(401).json({ status: false, message: 'Email atau password admin utama salah.' });
-      return;
-    }
-
-    const record = keyStore.ensureMainAdminRecord();
     const sessionToken = issueSessionToken({
       uid: record.uid,
       email: record.email,
       displayName: record.displayName,
-      role: 'admin',
+      role: record.role,
     });
 
     res.json({ status: true, sessionToken, data: record });
@@ -348,6 +378,7 @@ async function startServer() {
     }
 
     const isAdminEmail = isBootstrapAdminEmail(verified.email);
+    const defaultFreeTokens = keyStore.getSiteSettings().freeDailyTokens;
     const synced = keyStore.syncUserRecord({
       uid: verified.uid,
       email: verified.email,
@@ -355,7 +386,13 @@ async function startServer() {
       apiKey: body.apiKey,
       role: isAdminEmail ? 'admin' : body.role === 'admin' ? 'admin' : 'user',
       plan: isAdminEmail ? 'admin_unlimited' : body.plan || 'free',
-      dailyLimit: isAdminEmail ? -1 : typeof body.dailyLimit === 'number' ? body.dailyLimit : 1000,
+      dailyLimit: isAdminEmail
+        ? -1
+        : (body.plan || 'free') === 'free'
+          ? defaultFreeTokens
+          : typeof body.dailyLimit === 'number'
+            ? body.dailyLimit
+            : defaultFreeTokens,
       status: body.status === 'suspended' && !isAdminEmail ? 'suspended' : 'active',
     });
 
@@ -407,10 +444,14 @@ async function startServer() {
     if (!(await requireAdminToken(req, res))) return;
     const uid = String(req.params.uid);
     const body = req.body as {
-      action?: 'update_plan' | 'toggle_role' | 'toggle_status' | 'reset_key';
+      action?: 'update_plan' | 'assign_package' | 'update_quota' | 'toggle_role' | 'toggle_status' | 'reset_key';
       plan?: 'free' | 'pro' | 'admin_unlimited';
       role?: 'user' | 'admin';
       status?: 'active' | 'suspended';
+      dailyLimit?: number;
+      monthlyLimit?: number;
+      packageId?: string;
+      packageName?: string;
     };
 
     const target = keyStore.getByUid(uid);
@@ -427,15 +468,70 @@ async function startServer() {
       return;
     }
 
+    const settings = keyStore.getSiteSettings();
+
+    if (body.action === 'assign_package') {
+      const pkg = settings.packages.find((p) => p.id === body.packageId);
+      const tokens = pkg ? pkg.tokensPerMonth : Math.max(1, Number(body.monthlyLimit || 5000));
+      const updated = keyStore.updateUserByUid(uid, {
+        plan: 'pro',
+        role: target.role === 'admin' ? 'admin' : 'user',
+        dailyLimit: tokens,
+        monthlyLimit: tokens,
+        packageId: pkg?.id || body.packageId || 'custom',
+        packageName: pkg?.name || body.packageName || 'Paket Token',
+      });
+      res.json({ status: true, data: updated });
+      return;
+    }
+
+    if (body.action === 'update_quota') {
+      const nextMonthly =
+        typeof body.monthlyLimit === 'number' && body.monthlyLimit > 0 ? Math.floor(body.monthlyLimit) : undefined;
+      const nextDaily =
+        typeof body.dailyLimit === 'number'
+          ? Math.floor(body.dailyLimit)
+          : target.plan === 'free'
+            ? settings.freeDailyTokens
+            : target.dailyLimit;
+      const updated = keyStore.updateUserByUid(uid, {
+        dailyLimit: nextDaily,
+        monthlyLimit: nextMonthly,
+      });
+      res.json({ status: true, data: updated });
+      return;
+    }
+
     const nextRole = body.role ?? target.role;
     const nextPlan = body.plan ?? target.plan;
-    const nextLimit = nextPlan === 'admin_unlimited' || nextRole === 'admin' ? -1 : nextPlan === 'pro' ? 10000 : 1000;
+    const defaultPkg = settings.packages.find((p) => p.active) || settings.packages[0];
+    const nextMonthly =
+      nextPlan === 'pro'
+        ? target.monthlyLimit || defaultPkg?.tokensPerMonth || 25000
+        : undefined;
+    const nextLimit =
+      nextPlan === 'admin_unlimited' || nextRole === 'admin'
+        ? -1
+        : nextPlan === 'pro'
+          ? nextMonthly || 25000
+          : settings.freeDailyTokens;
+
     const updated = keyStore.updateUserByUid(uid, {
       role: nextRole,
       plan: nextPlan,
       dailyLimit: nextLimit,
+      monthlyLimit: nextMonthly,
+      packageId: nextPlan === 'pro' ? target.packageId || defaultPkg?.id : undefined,
+      packageName: nextPlan === 'pro' ? target.packageName || defaultPkg?.name : undefined,
       status: body.status ?? target.status,
     });
+    res.json({ status: true, data: updated });
+  });
+
+  app.put('/api/admin/settings', async (req: Request, res: Response) => {
+    if (!(await requireAdminToken(req, res))) return;
+    const body = req.body as Record<string, unknown>;
+    const updated = keyStore.updateSiteSettings(body as Parameters<typeof keyStore.updateSiteSettings>[0]);
     res.json({ status: true, data: updated });
   });
 
@@ -554,10 +650,13 @@ async function startServer() {
 
     res.locals.apiKeyRecord = check.record;
     res.locals.rateLimitRemaining = check.remaining;
-    res.setHeader(
-      'X-RateLimit-Limit',
-      check.record.dailyLimit === -1 ? 'unlimited' : String(check.record.dailyLimit)
-    );
+    const rateLimitHeader =
+      check.record.role === 'admin' || check.record.plan === 'admin_unlimited'
+        ? 'unlimited'
+        : check.record.plan === 'pro' && check.record.monthlyLimit && check.record.monthlyLimit > 0
+          ? String(check.record.monthlyLimit)
+          : String(check.record.dailyLimit);
+    res.setHeader('X-RateLimit-Limit', rateLimitHeader);
     res.setHeader('X-RateLimit-Remaining', check.remaining);
     next();
   }
@@ -567,6 +666,7 @@ async function startServer() {
     res: Response,
     result: { data: T; cacheStatus: string; etag: string; ttlRemainingSec: number; elapsedMs: number }
   ): void {
+    keyStore.recordRequest('v1');
     const rec = res.locals.apiKeyRecord as { apiKey: string; role: string; plan: string } | undefined;
     const ua = String(req.headers['user-agent'] || 'browser/fetch');
     keyStore.recordLog({
@@ -598,7 +698,7 @@ async function startServer() {
       status: true,
       code: 200,
       meta: {
-        provider: 'NusaKomik API v1 (Komiku.org)',
+        provider: 'EfemmaKomik-API v1',
         language: 'id',
         cache: result.cacheStatus,
         response_time_ms: result.elapsedMs,
@@ -625,7 +725,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil komik terupdate dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil komik terupdate dari server sumber',
       });
     }
   });
@@ -647,7 +747,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil komik terpopuler dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil komik terpopuler dari server sumber',
       });
     }
   });
@@ -668,7 +768,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil komik trending dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil komik trending dari server sumber',
       });
     }
   });
@@ -689,7 +789,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil komik rekomendasi dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil komik rekomendasi dari server sumber',
       });
     }
   });
@@ -712,7 +812,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil komik berwarna dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil komik berwarna dari server sumber',
       });
     }
   });
@@ -736,7 +836,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil daftar komik per tipe dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil daftar komik per tipe dari server sumber',
       });
     }
   });
@@ -760,7 +860,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil daftar komik per genre dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil daftar komik per genre dari server sumber',
       });
     }
   });
@@ -785,7 +885,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mengambil perpustakaan dari Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mengambil perpustakaan dari server sumber',
       });
     }
   }
@@ -810,7 +910,7 @@ async function startServer() {
       res.status(502).json({
         status: false,
         code: 502,
-        message: err instanceof Error ? err.message : 'Gagal mencari komik di Komiku.org',
+        message: err instanceof Error ? err.message : 'Gagal mencari data komik',
       });
     }
   });
@@ -835,7 +935,7 @@ async function startServer() {
       res.status(404).json({
         status: false,
         code: 404,
-        message: `Komik dengan slug '${slug}' tidak ditemukan di Komiku.`,
+        message: `Komik dengan slug '${slug}' tidak ditemukan.`,
       });
       return;
     }
@@ -853,7 +953,7 @@ async function startServer() {
       res.status(404).json({
         status: false,
         code: 404,
-        message: `Chapter '${chapterSlug}' tidak ditemukan di Komiku.`,
+        message: `Chapter '${chapterSlug}' tidak ditemukan.`,
       });
       return;
     }
@@ -884,7 +984,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`NusaKomik API (Komiku.org) berjalan di http://0.0.0.0:${PORT}`);
+    console.log(`EfemmaKomik-API berjalan di http://0.0.0.0:${PORT}`);
   });
 }
 

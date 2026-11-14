@@ -142,10 +142,10 @@ export function SelectDropdown({
       }
       className={`${
         portal ? '' : `absolute z-50 mt-1.5 w-full min-w-[210px] ${menuAlign === 'right' ? 'right-0' : 'left-0'}`
-      } overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-slate-950/5`}
+      } overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg ring-1 ring-slate-950/5 dark:ring-white/10`}
     >
       {searchable && (
-        <div className="border-b border-slate-100 bg-slate-50/70 p-2">
+        <div className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 p-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
@@ -154,7 +154,7 @@ export function SelectDropdown({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 pl-8 pr-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-rose-700 dark:focus:border-rose-500 focus:outline-none"
             />
           </div>
         </div>
@@ -162,7 +162,7 @@ export function SelectDropdown({
 
       <div className="max-h-60 overflow-y-auto overscroll-contain p-1">
         {filteredOptions.length === 0 ? (
-          <p className="px-3 py-4 text-center text-xs text-slate-500">Tidak ada pilihan cocok.</p>
+          <p className="px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400">Tidak ada pilihan cocok.</p>
         ) : (
           filteredOptions.map((opt) => {
             const isSelected = opt.value === value;
@@ -178,12 +178,12 @@ export function SelectDropdown({
                 }}
                 className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
                   isSelected
-                    ? 'bg-rose-50 font-semibold text-rose-800'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    ? 'bg-rose-50 dark:bg-rose-950/60 font-semibold text-rose-800 dark:text-rose-300'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white'
                 }`}
               >
                 <span className="truncate">{opt.label}</span>
-                {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-rose-700" />}
+                {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-rose-700 dark:text-rose-400" />}
               </button>
             );
           })
@@ -204,14 +204,16 @@ export function SelectDropdown({
         aria-expanded={open}
         aria-controls={listboxId}
         onClick={() => setOpen((prev) => !prev)}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-xs text-slate-900 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700 disabled:cursor-not-allowed disabled:opacity-60 ${
-          open ? 'border-rose-700 ring-2 ring-rose-700/15' : 'border-slate-200 hover:border-slate-300'
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border bg-white dark:bg-slate-900 px-3 py-2 text-left text-xs text-slate-900 dark:text-slate-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700 disabled:cursor-not-allowed disabled:opacity-60 ${
+          open
+            ? 'border-rose-700 dark:border-rose-500 ring-2 ring-rose-700/15 dark:ring-rose-500/20'
+            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
         } ${buttonClassName}`}
       >
         <span className="truncate font-medium">{selectedOption?.label || value}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform duration-150 ${
-            open ? 'rotate-180 text-rose-700' : ''
+          className={`h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400 transition-transform duration-150 ${
+            open ? 'rotate-180 text-rose-700 dark:text-rose-400' : ''
           }`}
         />
       </button>

@@ -3,6 +3,7 @@ import { BookOpen, Check, ChevronLeft, ChevronRight, Code2, Copy, Download, Exte
 import type { ChapterDetail, ComicDetail } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { JsonCodeBlock } from './JsonCodeBlock';
 import { StarRating } from './StarRating';
 
 interface ComicDetailModalProps {
@@ -128,19 +129,19 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Detail Komik dan Respon JSON Komiku"
+      aria-label="Detail Komik dan Respon JSON API"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-2 sm:p-4 backdrop-blur-xs overscroll-none"
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4 dark:border-slate-800">
           <div className="flex items-start justify-between gap-3 min-w-0">
             <div className="min-w-0">
-              <p className="font-mono text-[11px] text-slate-500 truncate sm:text-xs">{activeApiPath}</p>
-              <h2 className="font-display text-base font-bold text-slate-900 truncate sm:text-lg">
+              <p className="font-mono text-[11px] text-slate-500 truncate dark:text-slate-400 sm:text-xs">{activeApiPath}</p>
+              <h2 className="font-display text-base font-bold text-slate-900 truncate dark:text-slate-100 sm:text-lg">
                 {detail?.title || 'Memuat data komik...'}
               </h2>
             </div>
@@ -148,19 +149,21 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
               type="button"
               onClick={onClose}
               aria-label="Tutup modal"
-              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:hidden shrink-0"
+              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:hidden shrink-0"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
           <div className="flex items-center justify-between gap-2 shrink-0 sm:justify-end">
-            <div className="flex items-center overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1">
+            <div className="flex items-center overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
               <button
                 type="button"
                 onClick={() => setViewMode('overview')}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  viewMode === 'overview' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  viewMode === 'overview'
+                    ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
               >
                 Info & Chapter
@@ -169,7 +172,9 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                 type="button"
                 onClick={() => setViewMode('json')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  viewMode === 'json' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  viewMode === 'json'
+                    ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
               >
                 <Code2 className="h-3.5 w-3.5" />
@@ -180,7 +185,9 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                   type="button"
                   onClick={() => setViewMode('reader')}
                   className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    viewMode === 'reader' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    viewMode === 'reader'
+                      ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100'
+                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                   }`}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
@@ -193,7 +200,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
               type="button"
               onClick={onClose}
               aria-label="Tutup modal"
-              className="hidden rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
+              className="hidden rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:inline-flex"
             >
               <X className="h-5 w-5" />
             </button>
@@ -203,31 +210,31 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
         <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {loading ? (
             <div className="space-y-4">
-              <div className="h-44 rounded-lg bg-slate-100 animate-pulse" />
-              <div className="h-8 w-2/3 rounded bg-slate-100 animate-pulse" />
-              <div className="h-24 rounded bg-slate-100 animate-pulse" />
+              <div className="h-44 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
+              <div className="h-8 w-2/3 rounded bg-slate-100 dark:bg-slate-800 animate-pulse" />
+              <div className="h-24 rounded bg-slate-100 dark:bg-slate-800 animate-pulse" />
             </div>
           ) : !detail ? (
-            <p className="text-sm text-slate-600">Data komik tidak ditemukan di Komiku.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Data komik tidak ditemukan.</p>
           ) : viewMode === 'json' ? (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-slate-600">
-                  Struktur respon asli dari <code className="font-mono text-slate-900">{activeApiPath}</code>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Struktur respon JSON dari <code className="font-mono text-slate-900 dark:text-slate-100">{activeApiPath}</code>
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleCopyJson}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
-                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                     {copied ? 'Tersalin' : 'Salin JSON'}
                   </button>
                   <button
                     type="button"
                     onClick={handleDownloadJson}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Download .json
@@ -237,7 +244,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                       href={rawJsonUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 dark:bg-rose-700 dark:hover:bg-rose-600"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       Buka Raw JSON
@@ -254,22 +261,22 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                   )}
                 </div>
               </div>
-              <pre className="max-h-[55vh] overflow-auto rounded-lg bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100">
-                {jsonPayload}
-              </pre>
+              <div className="max-h-[55vh] overflow-auto code-scroll rounded-lg bg-slate-950 p-4 dark:border dark:border-slate-800">
+                <JsonCodeBlock json={jsonPayload} httpStatusLine="HTTP/1.1 200 OK" />
+              </div>
             </div>
           ) : viewMode === 'reader' ? (
             <div>
               {chapterLoading ? (
-                <div className="space-y-3 py-8 text-center text-sm text-slate-500">Memuat halaman chapter dari Komiku...</div>
+                <div className="space-y-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">Memuat halaman chapter...</div>
               ) : chapter ? (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
                     <div>
-                      <h3 className="font-display text-base font-bold text-slate-900 tabular-nums">
+                      <h3 className="font-display text-base font-bold text-slate-900 tabular-nums dark:text-slate-100">
                         {chapter.comic_title} — Chapter {chapter.chapter_number}
                       </h3>
-                      <p className="text-xs text-slate-500 tabular-nums">
+                      <p className="text-xs text-slate-500 tabular-nums dark:text-slate-400">
                         {chapter.chapter_title} · Rilis {chapter.released_label} · {chapter.total_pages} halaman
                       </p>
                     </div>
@@ -278,7 +285,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                         type="button"
                         disabled={!chapter.prev_chapter_slug}
                         onClick={() => chapter.prev_chapter_slug && void loadChapter(chapter.prev_chapter_slug)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <ChevronLeft className="h-3.5 w-3.5" />
                         Sebelumnya
@@ -287,7 +294,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                         type="button"
                         disabled={!chapter.next_chapter_slug}
                         onClick={() => chapter.next_chapter_slug && void loadChapter(chapter.next_chapter_slug)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         Berikutnya
                         <ChevronRight className="h-3.5 w-3.5" />
@@ -326,7 +333,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
               <div className="flex flex-col gap-5 sm:flex-row sm:gap-6">
                 <div className="mx-auto w-36 shrink-0 sm:mx-0 sm:w-40">
                   {coverStage === 'broken' || !coverSrc ? (
-                    <div className="flex aspect-[3/4] w-full flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-900 p-3 text-center text-white">
+                    <div className="flex aspect-[3/4] w-full flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-900 p-3 text-center text-white dark:border-slate-700">
                       <BookOpen className="mb-2 h-6 w-6 text-rose-400" />
                       <span className="text-xs font-medium">{detail.title}</span>
                     </div>
@@ -336,19 +343,19 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                       alt={detail.title}
                       referrerPolicy="no-referrer"
                       onError={handleCoverError}
-                      className="aspect-[3/4] w-full rounded-lg border border-slate-200 object-cover"
+                      className="aspect-[3/4] w-full rounded-lg border border-slate-200 object-cover dark:border-slate-700"
                     />
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1 space-y-4">
                   <div>
-                    <div className="flex flex-wrap items-center gap-y-1 text-xs text-slate-500 tabular-nums">
+                    <div className="flex flex-wrap items-center gap-y-1 text-xs text-slate-500 tabular-nums dark:text-slate-400">
                       <span>{detail.type}</span>
                       <span className="mx-2" aria-hidden="true">·</span>
                       <span>{detail.status}</span>
                       <span className="mx-2" aria-hidden="true">·</span>
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
                         Usia {detail.age_rating || '13+'}
                       </span>
                       {detail.theme && (
@@ -358,12 +365,12 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                         </>
                       )}
                     </div>
-                    <h3 className="mt-1 font-display text-xl font-bold text-slate-900 sm:text-2xl">{detail.title}</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">{detail.alternative_title}</p>
+                    <h3 className="mt-1 font-display text-xl font-bold text-slate-900 dark:text-slate-100 sm:text-2xl">{detail.title}</h3>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{detail.alternative_title}</p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-3">
                       <StarRating rating={detail.rating} showOutOfFive />
                       {detail.rating > 0 && detail.rating_source && detail.rating_source !== 'unrated' && (
-                        <span className="text-[11px] font-medium text-slate-500">
+                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                           Rating pasar: {detail.rating_source}
                         </span>
                       )}
@@ -371,65 +378,65 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                   </div>
 
                   {/* Metadata Grid: Author, Artist, Rilis Terbaru, Total Chapter, Usia */}
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-5 dark:border-slate-800 dark:bg-slate-950/60">
                     <div>
-                      <p className="text-slate-500">Author</p>
-                      <p className="mt-0.5 font-semibold text-slate-900 truncate">{detail.author}</p>
+                      <p className="text-slate-500 dark:text-slate-400">Author</p>
+                      <p className="mt-0.5 font-semibold text-slate-900 truncate dark:text-slate-100">{detail.author}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Artist</p>
-                      <p className="mt-0.5 font-semibold text-slate-900 truncate">{detail.artist}</p>
+                      <p className="text-slate-500 dark:text-slate-400">Artist</p>
+                      <p className="mt-0.5 font-semibold text-slate-900 truncate dark:text-slate-100">{detail.artist}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Usia</p>
-                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums">{detail.age_rating || '13+'}</p>
+                      <p className="text-slate-500 dark:text-slate-400">Usia</p>
+                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums dark:text-slate-100">{detail.age_rating || '13+'}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Rilis Terbaru</p>
-                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums">{formatIdDate(detail.released_at)}</p>
+                      <p className="text-slate-500 dark:text-slate-400">Rilis Terbaru</p>
+                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums dark:text-slate-100">{formatIdDate(detail.released_at)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Total Chapter</p>
-                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums">{detail.chapter_count} Ch</p>
+                      <p className="text-slate-500 dark:text-slate-400">Total Chapter</p>
+                      <p className="mt-0.5 font-semibold text-slate-900 tabular-nums dark:text-slate-100">{detail.chapter_count} Ch</p>
                     </div>
                   </div>
 
-                  <p className="text-sm leading-relaxed text-slate-700">{detail.synopsis}</p>
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{detail.synopsis}</p>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
                     <span>
                       Genre:{' '}
-                      <span className="font-medium text-slate-800">
+                      <span className="font-medium text-slate-800 dark:text-slate-200">
                         {detail.genres.length > 0 ? detail.genres.join(' · ') : 'Umum'}
                       </span>
                     </span>
-                    <span className="tabular-nums text-slate-500">
-                      Ditambahkan: {formatIdDate(detail.added_at)} · Sumber: {detail.source}
+                    <span className="tabular-nums text-slate-500 dark:text-slate-400">
+                      Ditambahkan: {formatIdDate(detail.added_at)} · Provider: EfemmaKomik-API
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 pt-5">
-                <h4 className="mb-3 font-display text-sm font-semibold text-slate-900 tabular-nums">
+              <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
+                <h4 className="mb-3 font-display text-sm font-semibold text-slate-900 tabular-nums dark:text-slate-100">
                   Daftar Chapter Bahasa Indonesia ({detail.chapters.length})
                 </h4>
-                <div className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+                <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
                   {detail.chapters.map((ch) => (
                     <button
                       key={ch.chapter_slug}
                       type="button"
                       onClick={() => void loadChapter(ch.chapter_slug)}
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 sm:px-4"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 sm:px-4"
                     >
                       <div className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-medium text-slate-900 tabular-nums sm:inline sm:text-sm">
+                        <span className="block truncate text-xs font-medium text-slate-900 tabular-nums dark:text-slate-100 sm:inline sm:text-sm">
                           {ch.title || `Chapter ${ch.chapter_number}`}
                         </span>
-                        <span className="hidden mx-2 text-slate-300 sm:inline" aria-hidden="true">·</span>
-                        <span className="text-[11px] text-slate-500 sm:text-xs">{ch.released_label}</span>
+                        <span className="hidden mx-2 text-slate-300 dark:text-slate-700 sm:inline" aria-hidden="true">·</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">{ch.released_label}</span>
                       </div>
-                      <span className="font-mono text-[11px] text-rose-700 shrink-0 sm:text-xs">Baca / JSON</span>
+                      <span className="font-mono text-[11px] text-rose-700 shrink-0 dark:text-rose-400 sm:text-xs">Baca / JSON</span>
                     </button>
                   ))}
                 </div>

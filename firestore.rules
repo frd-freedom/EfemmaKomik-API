@@ -98,7 +98,7 @@ service cloud.firestore {
         && incoming().status == 'active'
         && (
           (isBootstrappedAdmin() && incoming().role == 'admin' && incoming().plan == 'admin_unlimited' && incoming().dailyLimit == -1)
-          || (incoming().role == 'user' && incoming().plan == 'free' && incoming().dailyLimit == 1000)
+          || (incoming().role == 'user' && incoming().plan == 'free' && incoming().dailyLimit >= 1 && incoming().dailyLimit <= 100000)
         );
 
       allow update: if isValidId(userId)
