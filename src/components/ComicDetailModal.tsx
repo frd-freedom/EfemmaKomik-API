@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, Check, ChevronLeft, ChevronRight, Code2, Copy, Download, ExternalLink, X } from 'lucide-react';
+import { BookOpen, Check, ChevronLeft, ChevronRight, Code2, Copy, Download, ExternalLink, Lock, X } from 'lucide-react';
 import type { ChapterDetail, ComicDetail } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { StarRating } from './StarRating';
 
 interface ComicDetailModalProps {
   slug: string;
   onClose: () => void;
 }
-
-const SANDBOX_KEY = 'kmk_demo_nusakomik_id_2026';
 
 function formatIdDate(iso?: string): string {
   if (!iso) return '-';
@@ -23,8 +22,9 @@ function formatIdDate(iso?: string): string {
 }
 
 export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
-  const { userProfile } = useAuth();
-  const activeKey = userProfile?.apiKey || SANDBOX_KEY;
+  useBodyScrollLock(true);
+  const { userProfile, openAuthModal } = useAuth();
+  const activeKey = userProfile?.apiKey || '';
 
   const [detail, setDetail] = useState<ComicDetail | null>(null);
   const [chapter, setChapter] = useState<ChapterDetail | null>(null);
@@ -79,7 +79,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
       ? `/api/v1/komik/chapter/${encodeURIComponent(chapter.chapter_slug)}`
       : `/api/v1/komik/detail/${encodeURIComponent(slug)}`;
 
-  const rawJsonUrl = `${activeApiPath}?apikey=${encodeURIComponent(activeKey)}`;
+  const rawJsonUrl = activeKey ? `${activeApiPath}?apikey=${encodeURIComponent(activeKey)}` : '';
 
   const jsonPayload =
     viewMode === 'reader' && chapter
@@ -129,7 +129,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Detail Komik dan Respon JSON Komiku"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-2 sm:p-4 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-2 sm:p-4 backdrop-blur-xs overscroll-none"
       onClick={onClose}
     >
       <div
@@ -200,7 +200,7 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {loading ? (
             <div className="space-y-4">
               <div className="h-44 rounded-lg bg-slate-100 animate-pulse" />
@@ -232,15 +232,26 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                     <Download className="h-3.5 w-3.5" />
                     Download .json
                   </button>
-                  <a
-                    href={rawJsonUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Buka Raw JSON
-                  </a>
+                  {rawJsonUrl ? (
+                    <a
+                      href={rawJsonUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Buka Raw JSON
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openAuthModal}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      Masuk untuk Buka Raw JSON
+                    </button>
+                  )}
                 </div>
               </div>
               <pre className="max-h-[55vh] overflow-auto rounded-lg bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100">
@@ -349,8 +360,13 @@ export function ComicDetailModal({ slug, onClose }: ComicDetailModalProps) {
                     </div>
                     <h3 className="mt-1 font-display text-xl font-bold text-slate-900 sm:text-2xl">{detail.title}</h3>
                     <p className="mt-0.5 text-xs text-slate-500">{detail.alternative_title}</p>
-                    <div className="mt-2.5 flex items-center gap-3">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-3">
                       <StarRating rating={detail.rating} showOutOfFive />
+                      {detail.rating > 0 && detail.rating_source && detail.rating_source !== 'unrated' && (
+                        <span className="text-[11px] font-medium text-slate-500">
+                          Rating pasar: {detail.rating_source}
+                        </span>
+                      )}
                     </div>
                   </div>
 

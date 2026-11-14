@@ -1,17 +1,17 @@
 [
   {
-    "apiKey": "kmk_demo_nusakomik_id_2026",
-    "uid": "sandbox-demo",
-    "email": "sandbox@nusakomik.id",
-    "displayName": "Sandbox Demo",
-    "role": "user",
-    "plan": "free",
-    "dailyLimit": 250,
-    "requestsToday": 36,
-    "requestsTotal": 36,
-    "usageDate": "2026-11-14",
+    "apiKey": "kmk_adm_YRCyLMyuGB5NV4hNzPNHc9Bg",
+    "uid": "admin-utama-predimahrobi",
+    "email": "predimahrobi@gmail.com",
+    "displayName": "Admin Utama",
+    "role": "admin",
+    "plan": "admin_unlimited",
+    "dailyLimit": -1,
+    "requestsToday": 2,
+    "requestsTotal": 2,
+    "usageDate": "2026-11-15",
     "status": "active",
-    "lastUsedAt": "2026-11-14T16:19:19.913Z",
+    "lastUsedAt": "2026-11-14T17:21:38.506Z",
     "lastUserAgent": "node"
   }
 ]

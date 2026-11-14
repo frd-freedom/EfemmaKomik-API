@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Code2, Search } from 'lucide-react
 import type { CatalogPagination, ComicSummary, ComicType, KomikuFilters } from '../types';
 import { ComicDetailModal } from './ComicDetailModal';
 import { JsonResponseModal } from './JsonResponseModal';
+import { SelectDropdown } from './SelectDropdown';
 import { StarRating } from './StarRating';
 
 export function BerwarnaSection() {
@@ -155,22 +156,21 @@ export function BerwarnaSection() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select
-              aria-label="Filter genre komik berwarna"
+            <SelectDropdown
+              ariaLabel="Filter genre komik berwarna"
               value={genreFilter}
-              onChange={(e) => {
-                setGenreFilter(e.target.value);
+              onChange={(next) => {
+                setGenreFilter(next);
                 setPage(1);
               }}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-rose-700 focus:outline-none sm:w-44"
-            >
-              <option value="all">Semua Genre ({genresList.length || 50})</option>
-              {genresList.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
+              searchable
+              searchPlaceholder="Cari genre..."
+              className="w-full sm:w-52"
+              options={[
+                { value: 'all', label: `Semua Genre (${genresList.length || 50})` },
+                ...genresList.map((g) => ({ value: g, label: g })),
+              ]}
+            />
 
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

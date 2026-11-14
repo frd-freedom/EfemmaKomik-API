@@ -1,12 +1,12 @@
 {
-  "projectId": "sturdy-arcanum-jpnh2",
-  "appId": "1:212915779704:web:e11e6f717a6e56d81fd58d",
-  "apiKey": "AIzaSyCdRmX5I5cRWtwXHxPuhp9NsfFYlXfpx3k",
-  "authDomain": "sturdy-arcanum-jpnh2.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-5f77c1c3-f59c-497b-bce3-f48ed6fa8d72",
-  "storageBucket": "sturdy-arcanum-jpnh2.firebasestorage.app",
-  "messagingSenderId": "212915779704",
+  "projectId": "gen-lang-client-0019385425",
+  "appId": "1:663742367359:web:32648f9c886e596b39214a",
+  "apiKey": "AIzaSyBaItKbYoVlW1z1GlcXGgXOTx9hNHFgCTc",
+  "authDomain": "gen-lang-client-0019385425.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-efemmakomikapi-7c206e75-294c-425d-b442-554805fad091",
+  "storageBucket": "gen-lang-client-0019385425.firebasestorage.app",
+  "messagingSenderId": "663742367359",
   "measurementId": "",
-  "oAuthClientId": "212915779704-17ne1co0eadksk87l9lnlb9g0tqnmpfh.apps.googleusercontent.com",
+  "oAuthClientId": "663742367359-tm7l3fvk8kj7uj8dmboqa5dupuqaqobd.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

@@ -28,6 +28,7 @@ export interface ComicSummary {
   language: 'id';
   status: ComicStatus;
   rating: number;
+  rating_source?: string;
   age_rating?: string;
   views: number;
   views_label?: string;
@@ -156,18 +157,202 @@ function hashSlugToId(slug: string): number {
   return (h >>> 0) % 900_000_000 + 100_000;
 }
 
-function computeStarRating(slug: string, opts?: { rank?: number; views?: number; chapters?: number }): number {
-  if (opts?.rank && opts.rank <= 10) {
-    return Number(Math.max(4.7, 5.0 - (opts.rank - 1) * 0.025).toFixed(1));
+const MARKET_RATING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cleanTitleForMarketLookup(title: string): string {
+  return title
+    .replace(/^komik\s+/i, '')
+    .replace(/\s*(?:\[[^\]]*\]|\([^)]*\))\s*/g, ' ')
+    .replace(/\s+(?:bahasa\s+indonesia|sub\s+indo|indo|berwarna|colored|full\s+color)\s*$/i, '')
+    .replace(/[:\-–—]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+}
+
+function isReasonableTitleMatch(queryTitle: string, candidateTitles: Array<string | null | undefined>): boolean {
+  const qTokens = normalizeTokens(queryTitle);
+  if (qTokens.length === 0) return false;
+  const qJoined = qTokens.join(' ');
+
+  for (const cand of candidateTitles) {
+    if (!cand) continue;
+    const cTokens = normalizeTokens(cand);
+    if (cTokens.length === 0) continue;
+    const cJoined = cTokens.join(' ');
+    if (cJoined === qJoined || cJoined.includes(qJoined) || qJoined.includes(cJoined)) {
+      return true;
+    }
+    const cSet = new Set(cTokens);
+    const shared = qTokens.filter((t) => cSet.has(t)).length;
+    if (shared >= Math.min(2, qTokens.length)) {
+      return true;
+    }
+    if (qTokens.length === 1 && shared === 1) {
+      return true;
+    }
   }
-  if (opts?.rank && opts.rank <= 50) {
-    return Number(Math.max(4.5, 4.8 - ((opts.rank - 10) / 40) * 0.2).toFixed(1));
+  return false;
+}
+
+interface AniListMediaResult {
+  title?: { romaji?: string | null; english?: string | null; native?: string | null };
+  synonyms?: string[] | null;
+  averageScore?: number | null;
+  meanScore?: number | null;
+}
+
+async function fetchAniListBatchRatings(titles: string[]): Promise<void> {
+  if (titles.length === 0) return;
+  const chunks: string[][] = [];
+  for (let i = 0; i < titles.length; i += 15) {
+    chunks.push(titles.slice(i, i + 15));
   }
-  if (opts?.views && opts.views >= 20000) return 4.8;
-  if (opts?.views && opts.views >= 5000) return 4.6;
-  if (opts?.chapters && opts.chapters >= 150) return 4.7;
-  const jitter = (hashSlugToId(slug) % 6) * 0.1;
-  return Number((4.3 + jitter).toFixed(1));
+
+  for (const chunk of chunks) {
+    const queryBody =
+      '{ ' +
+      chunk
+        .map(
+          (title, idx) =>
+            `m${idx}: Page(perPage: 3) { media(search: ${JSON.stringify(title)}, type: MANGA, sort: SEARCH_MATCH) { title { romaji english native } synonyms averageScore meanScore } }`
+        )
+        .join(' ') +
+      ' }';
+
+    try {
+      const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        signal: AbortSignal.timeout(5500),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query: queryBody }),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        data?: Record<string, { media?: AniListMediaResult[] } | null>;
+      };
+      const data = json.data || {};
+      const now = Date.now();
+
+      chunk.forEach((rawTitle, idx) => {
+        const key = rawTitle.toLowerCase();
+        const mediaList = data[`m${idx}`]?.media || [];
+        const matched = mediaList.find((media) => {
+          const rawScore = media?.averageScore ?? media?.meanScore ?? null;
+          if (!rawScore || rawScore <= 0) return false;
+          const candidates = [
+            media?.title?.english,
+            media?.title?.romaji,
+            media?.title?.native,
+            ...(media?.synonyms || []),
+          ];
+          return isReasonableTitleMatch(rawTitle, candidates);
+        });
+
+        const rawScore = matched?.averageScore ?? matched?.meanScore ?? null;
+        if (matched && rawScore && rawScore > 0) {
+          const fiveStar = Number(Math.min(5, Math.max(0.5, rawScore / 20)).toFixed(1));
+          snapshot.marketRatings[key] = {
+            rating: fiveStar,
+            source: 'anilist.co',
+            savedAt: now,
+          };
+        } else {
+          snapshot.marketRatings[key] = {
+            rating: 0,
+            source: 'unrated',
+            savedAt: now,
+          };
+        }
+      });
+      scheduleSnapshotSave();
+    } catch {
+      // Non-fatal: keep items unrated if AniList temporarily unreachable
+    }
+  }
+}
+
+async function fetchSingleJikanRating(cleanTitle: string): Promise<{ rating: number; source: string } | null> {
+  if (!cleanTitle) return null;
+  try {
+    const res = await fetch(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(cleanTitle)}&limit=3`, {
+      signal: AbortSignal.timeout(4000),
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      data?: Array<{
+        title?: string;
+        title_english?: string | null;
+        titles?: Array<{ title?: string }>;
+        score?: number | null;
+      }>;
+    };
+    const match = (json.data || []).find((m) => {
+      if (!m.score || m.score <= 0) return false;
+      const cands = [m.title, m.title_english, ...(m.titles || []).map((t) => t.title)];
+      return isReasonableTitleMatch(cleanTitle, cands);
+    });
+    if (!match || !match.score) return null;
+    return {
+      rating: Number(Math.min(5, Math.max(0.5, match.score / 2)).toFixed(1)),
+      source: 'myanimelist.net',
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function enrichWithMarketRatings<T extends ComicSummary>(items: T[], allowJikanFallback = false): Promise<T[]> {
+  if (items.length === 0) return items;
+  const now = Date.now();
+  const missingTitles = new Set<string>();
+
+  for (const item of items) {
+    const clean = cleanTitleForMarketLookup(item.title);
+    if (!clean) continue;
+    const cached = snapshot.marketRatings[clean.toLowerCase()];
+    if (!cached || now - cached.savedAt > MARKET_RATING_TTL_MS) {
+      missingTitles.add(clean);
+    }
+  }
+
+  if (missingTitles.size > 0) {
+    await fetchAniListBatchRatings(Array.from(missingTitles));
+  }
+
+  for (const item of items) {
+    const clean = cleanTitleForMarketLookup(item.title);
+    const key = clean.toLowerCase();
+    let cached = snapshot.marketRatings[key];
+
+    if (allowJikanFallback && (!cached || cached.rating === 0)) {
+      const altClean = cleanTitleForMarketLookup(item.alternative_title || '');
+      const jikan = (await fetchSingleJikanRating(clean)) || (altClean && altClean !== clean ? await fetchSingleJikanRating(altClean) : null);
+      if (jikan) {
+        cached = { rating: jikan.rating, source: jikan.source, savedAt: Date.now() };
+        snapshot.marketRatings[key] = cached;
+        scheduleSnapshotSave();
+      }
+    }
+
+    if (cached && cached.rating > 0) {
+      item.rating = cached.rating;
+      item.rating_source = cached.source;
+    } else {
+      item.rating = 0;
+      item.rating_source = 'unrated';
+    }
+  }
+
+  return items;
 }
 
 const GENRE_ALIASES: Record<string, string[]> = {
@@ -330,9 +515,10 @@ function toGenreSlug(genre: string): string {
 interface SnapshotStore {
   htmlCache: Record<string, { html: string; savedAt: number }>;
   titleToSlug: Record<string, string>;
+  marketRatings: Record<string, { rating: number; source: string; savedAt: number }>;
 }
 
-let snapshot: SnapshotStore = { htmlCache: {}, titleToSlug: {} };
+let snapshot: SnapshotStore = { htmlCache: {}, titleToSlug: {}, marketRatings: {} };
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 try {
@@ -342,6 +528,7 @@ try {
       snapshot = {
         htmlCache: parsed.htmlCache || {},
         titleToSlug: parsed.titleToSlug || {},
+        marketRatings: parsed.marketRatings || {},
       };
     }
   }
@@ -559,7 +746,8 @@ function parseLs2Section(
       country: detectCountry(type),
       language: 'id',
       status: 'Ongoing',
-      rating: computeStarRating(slug, { chapters: chNum }),
+      rating: 0,
+      rating_source: 'unrated',
       views: 0,
       chapter_count: Math.max(1, Math.floor(chNum)),
       latest_chapter: latestChapter,
@@ -617,7 +805,8 @@ function parseLs4Section($: cheerio.CheerioAPI, containerSelector: string): Comi
       country: detectCountry(type),
       language: 'id',
       status: 'Ongoing',
-      rating: computeStarRating(slug, { rank: rankNum, views, chapters: chNum }),
+      rating: 0,
+      rating_source: 'unrated',
       views,
       views_label: viewsPart || `${views.toLocaleString('en-US')} views`,
       chapter_count: Math.max(1, Math.floor(chNum)),
@@ -704,7 +893,8 @@ function parseApiBgeList($: cheerio.CheerioAPI): { items: ComicSummary[]; hasNex
       country: detectCountry(type),
       language: 'id',
       status: 'Ongoing',
-      rating: computeStarRating(slug, { chapters: chNum }),
+      rating: 0,
+      rating_source: 'unrated',
       views: 0,
       chapter_count: Math.max(1, Math.floor(chNum)),
       latest_chapter: latestChapter,
@@ -756,7 +946,8 @@ function parseDaftarKomik($: cheerio.CheerioAPI): { items: ComicSummary[]; total
       country: detectCountry(type),
       language: 'id',
       status,
-      rating: computeStarRating(slug),
+      rating: 0,
+      rating_source: 'unrated',
       views: 0,
       chapter_count: 1,
       latest_chapter: status,
@@ -861,7 +1052,7 @@ export async function getKomikuCatalog(options: {
     const html = await fetchKomikuHtml(url, 300_000);
     const $ = cheerio.load(html);
     const { items, hasNext } = parseApiBgeList($);
-    const sliced = items.slice(0, limit);
+    const sliced = await enrichWithMarketRatings(items.slice(0, limit));
     return {
       items: sliced,
       pagination: {
@@ -878,7 +1069,7 @@ export async function getKomikuCatalog(options: {
   if (options.category === 'terupdate' && !cleanType && !cleanGenre && !cleanStatus && page === 1) {
     const html = await fetchKomikuHtml(`${KOMIKU_BASE}/`, 180_000);
     const $ = cheerio.load(html);
-    const items = parseLs2Section($, '#Terbaru').slice(0, limit);
+    const items = await enrichWithMarketRatings(parseLs2Section($, '#Terbaru').slice(0, limit));
     return {
       items,
       pagination: { page: 1, limit, total_items: 8100, total_pages: 200 },
@@ -940,7 +1131,8 @@ export async function getKomikuCatalog(options: {
             country: detectCountry(type),
             language: 'id',
             status: 'Ongoing',
-            rating: computeStarRating(slug, { chapters: chNum }),
+            rating: 0,
+            rating_source: 'unrated',
             views: 0,
             chapter_count: Math.max(1, Math.floor(chNum)),
             latest_chapter: latestChapter,
@@ -980,7 +1172,7 @@ export async function getKomikuCatalog(options: {
       const $api = cheerio.load(apiHtml);
       const { items, hasNext } = parseApiBgeList($api);
       return {
-        items: items.slice(0, limit),
+        items: await enrichWithMarketRatings(items.slice(0, limit)),
         pagination: {
           page,
           limit,
@@ -993,7 +1185,7 @@ export async function getKomikuCatalog(options: {
 
     const start = (page - 1) * limit;
     return {
-      items: filteredPool.slice(start, start + limit),
+      items: await enrichWithMarketRatings(filteredPool.slice(start, start + limit)),
       pagination: {
         page,
         limit,
@@ -1022,7 +1214,7 @@ export async function getKomikuCatalog(options: {
       const $ = cheerio.load(html);
       const { items, hasNext } = parseApiBgeList($);
       return {
-        items: items.slice(0, limit),
+        items: await enrichWithMarketRatings(items.slice(0, limit)),
         pagination: {
           page,
           limit,
@@ -1047,7 +1239,7 @@ export async function getKomikuCatalog(options: {
 
     const allRanked = parseLs4Section($, tabId);
     const start = (page - 1) * limit;
-    const paged = allRanked.slice(start, start + limit);
+    const paged = await enrichWithMarketRatings(allRanked.slice(start, start + limit));
 
     return {
       items: paged,
@@ -1132,7 +1324,8 @@ export async function getKomikuCatalog(options: {
         country: detectCountry(type),
         language: 'id',
         status: normalizeStatus(it.publicationStatus),
-        rating: computeStarRating(slug, { rank, views: dailyViews }),
+        rating: 0,
+        rating_source: 'unrated',
         age_rating: it.ageRating && it.ageRating > 0 ? `${it.ageRating}+` : '13+',
         views: dailyViews || activeUsers,
         views_label: `${activeUsers} pembaca aktif · ${dailyViews.toLocaleString('id-ID')} views`,
@@ -1155,7 +1348,7 @@ export async function getKomikuCatalog(options: {
 
     const start = (page - 1) * limit;
     return {
-      items: mapped.slice(start, start + limit),
+      items: await enrichWithMarketRatings(mapped.slice(start, start + limit)),
       pagination: {
         page,
         limit,
@@ -1183,7 +1376,7 @@ export async function getKomikuCatalog(options: {
 
     const totalPages = hasNext ? Math.max(page + 1, 250) : page;
     return {
-      items: filtered.slice(0, limit),
+      items: await enrichWithMarketRatings(filtered.slice(0, limit)),
       pagination: {
         page,
         limit,
@@ -1209,7 +1402,7 @@ export async function getKomikuCatalog(options: {
     const { items, totalPages } = parseDaftarKomik($);
     if (items.length > 0) {
       return {
-        items: items.slice(0, limit),
+        items: await enrichWithMarketRatings(items.slice(0, limit)),
         pagination: {
           page,
           limit,
@@ -1250,7 +1443,7 @@ export async function getKomikuCatalog(options: {
   const totalPages = hasNext ? Math.max(page + 1, !cleanType && !cleanGenre && !cleanStatus ? 800 : page + 5) : page;
 
   return {
-    items: items.slice(0, limit),
+    items: await enrichWithMarketRatings(items.slice(0, limit)),
     pagination: {
       page,
       limit,
@@ -1336,7 +1529,6 @@ export async function getKomikuDetail(slug: string): Promise<ComicDetail | null>
   const type = normalizeType(infoMap['tipe'] || infoMap['jenis komik']);
   const status = normalizeStatus(infoMap['status']);
   const ageRating = infoMap['rating'] || infoMap['usia'] || '13+';
-  const ratingScore = computeStarRating(resolvedSlug, { chapters: chapters.length });
 
   const rawCover = $('.ims img').first().attr('src') || $('.ims img').first().attr('data-src') || '';
   const coverUrl = normalizeCoverUrl(rawCover);
@@ -1345,7 +1537,7 @@ export async function getKomikuDetail(slug: string): Promise<ComicDetail | null>
   const latestCh = chapters[0];
   const oldestCh = chapters[chapters.length - 1];
 
-  return {
+  const detailObj: ComicDetail = {
     id: hashSlugToId(resolvedSlug),
     slug: resolvedSlug,
     title,
@@ -1354,7 +1546,8 @@ export async function getKomikuDetail(slug: string): Promise<ComicDetail | null>
     country: detectCountry(type),
     language: 'id',
     status,
-    rating: ratingScore,
+    rating: 0,
+    rating_source: 'unrated',
     age_rating: ageRating,
     views: 0,
     chapter_count: chapters.length,
@@ -1377,6 +1570,9 @@ export async function getKomikuDetail(slug: string): Promise<ComicDetail | null>
     source: 'komiku.org',
     komiku_url: `${KOMIKU_BASE}/manga/${encodeURIComponent(resolvedSlug)}/`,
   };
+
+  await enrichWithMarketRatings([detailObj], true);
+  return detailObj;
 }
 
 export async function getKomikuChapter(chapterKey: string): Promise<ChapterDetail | null> {

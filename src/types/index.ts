@@ -33,6 +33,7 @@ export interface ComicSummary {
   language: 'id';
   status: ComicStatus;
   rating: number;
+  rating_source?: string;
   age_rating?: string;
   views: number;
   views_label?: string;

@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Code2, Search } from 'lucide-react';
 import type { CacheStats, ComicSummary, ComicType, KomikuFilters } from '../types';
 import { ComicDetailModal } from './ComicDetailModal';
 import { JsonResponseModal } from './JsonResponseModal';
+import { SelectDropdown } from './SelectDropdown';
 import { StarRating } from './StarRating';
 import { useAuth } from '../contexts/AuthContext';
 import type { ActiveTab } from './Navbar';
@@ -36,7 +37,7 @@ const SAMPLE_HERO_JSON = `{
 }`;
 
 export function CatalogSection({ onNavigate }: CatalogSectionProps) {
-  const { userProfile, signInWithGoogle } = useAuth();
+  const { userProfile, openAuthModal } = useAuth();
   const [category, setCategory] = useState<'terupdate' | 'terpopuler' | 'trending' | 'rekomendasi'>('terupdate');
   const [typeFilter, setTypeFilter] = useState<'all' | ComicType>('all');
   const [genreFilter, setGenreFilter] = useState('all');
@@ -150,10 +151,10 @@ export function CatalogSection({ onNavigate }: CatalogSectionProps) {
             ) : (
               <button
                 type="button"
-                onClick={() => void signInWithGoogle()}
+                onClick={openAuthModal}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-800 whitespace-nowrap"
               >
-                Daftar & Ambil API Key (Google)
+                Masuk / Daftar Ambil API Key
                 <ArrowRight className="h-4 w-4" />
               </button>
             )}
@@ -281,19 +282,19 @@ export function CatalogSection({ onNavigate }: CatalogSectionProps) {
               <label htmlFor="catalog-genre" className="text-xs font-medium text-slate-600 whitespace-nowrap shrink-0">
                 Genre:
               </label>
-              <select
+              <SelectDropdown
                 id="catalog-genre"
+                ariaLabel="Filter genre komik"
                 value={genreFilter}
-                onChange={(e) => setGenreFilter(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-rose-700 focus:outline-none sm:w-56"
-              >
-                <option value="all">Semua Genre ({genresList.length || 50})</option>
-                {genresList.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
+                onChange={setGenreFilter}
+                searchable
+                searchPlaceholder="Cari genre komik..."
+                className="w-full sm:w-60"
+                options={[
+                  { value: 'all', label: `Semua Genre (${genresList.length || 50})` },
+                  ...genresList.map((g) => ({ value: g, label: g })),
+                ]}
+              />
             </div>
 
             <div className="relative w-full sm:w-80">

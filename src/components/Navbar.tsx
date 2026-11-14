@@ -17,7 +17,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ activeTab, onSelectTab }: NavbarProps) {
-  const { userProfile, signInWithGoogle, signOutUser, loading } = useAuth();
+  const { userProfile, openAuthModal, signOutUser, loading } = useAuth();
   const isAdmin = userProfile?.role === 'admin';
 
   const navItems: Array<{ id: ActiveTab; label: string }> = [
@@ -92,10 +92,10 @@ export function Navbar({ activeTab, onSelectTab }: NavbarProps) {
           ) : (
             <button
               type="button"
-              onClick={() => void signInWithGoogle()}
+              onClick={openAuthModal}
               className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-slate-800 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700"
             >
-              Masuk Google
+              Masuk
             </button>
           )}
         </div>

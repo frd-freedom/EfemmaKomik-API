@@ -8,6 +8,7 @@ import { DocsSection } from './components/DocsSection';
 import { PlaygroundSection } from './components/PlaygroundSection';
 import { UserDashboard } from './components/UserDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { AuthModal } from './components/AuthModal';
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('katalog');
@@ -15,6 +16,7 @@ function AppShell() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar activeTab={activeTab} onSelectTab={setActiveTab} />
+      <AuthModal />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
         {activeTab === 'katalog' && <CatalogSection onNavigate={setActiveTab} />}

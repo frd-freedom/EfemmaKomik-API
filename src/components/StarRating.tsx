@@ -7,17 +7,18 @@ interface StarRatingProps {
 }
 
 export function StarRating({ rating, compact = false, showOutOfFive = false }: StarRatingProps) {
-  const normalized = Math.max(0, Math.min(5, rating > 5 ? rating / 2 : rating));
+  const hasRating = typeof rating === 'number' && rating > 0;
+  const normalized = hasRating ? Math.max(0, Math.min(5, rating > 5 ? rating / 2 : rating)) : 0;
   const starSize = compact ? 11 : 14;
 
   return (
     <span
       className="inline-flex items-center gap-1.5 tabular-nums"
-      aria-label={`Rating ${normalized.toFixed(1)} dari 5 bintang`}
+      aria-label={hasRating ? `Rating pasar ${normalized.toFixed(1)} dari 5 bintang` : 'Belum ada rating pasar'}
     >
       <span className="inline-flex items-center gap-0.5" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((index) => {
-          const fillRatio = Math.max(0, Math.min(1, normalized - (index - 1)));
+          const fillRatio = hasRating ? Math.max(0, Math.min(1, normalized - (index - 1))) : 0;
           return (
             <span
               key={index}
@@ -51,14 +52,20 @@ export function StarRating({ rating, compact = false, showOutOfFive = false }: S
           );
         })}
       </span>
-      <span
-        className={`font-semibold text-slate-800 ${
-          compact ? 'text-[11px]' : 'text-xs'
-        }`}
-      >
-        {normalized.toFixed(1)}
-        {showOutOfFive && <span className="font-normal text-slate-500"> / 5</span>}
-      </span>
+      {hasRating ? (
+        <span
+          className={`font-semibold text-slate-800 ${
+            compact ? 'text-[11px]' : 'text-xs'
+          }`}
+        >
+          {normalized.toFixed(1)}
+          {showOutOfFive && <span className="font-normal text-slate-500"> / 5</span>}
+        </span>
+      ) : (
+        <span className={`font-medium text-slate-400 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+          Belum ada rating
+        </span>
+      )}
     </span>
   );
 }

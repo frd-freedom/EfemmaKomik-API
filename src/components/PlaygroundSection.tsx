@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Copy, Download, ExternalLink, Play } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, Lock, Play } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { SelectDropdown } from './SelectDropdown';
 import type { KomikuFilters } from '../types';
 
 type EndpointId =
@@ -35,7 +36,7 @@ const ENDPOINT_OPTIONS: Array<{ id: EndpointId; label: string; pathPreview: stri
 ];
 
 export function PlaygroundSection() {
-  const { userProfile, refreshUsage } = useAuth();
+  const { userProfile, openAuthModal, refreshUsage } = useAuth();
   const [endpoint, setEndpoint] = useState<EndpointId>('terupdate');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [typeParam, setTypeParam] = useState('all');
@@ -64,7 +65,7 @@ export function PlaygroundSection() {
       .catch(() => {});
   }, []);
 
-  const effectiveKey = apiKeyInput.trim() || userProfile?.apiKey || 'kmk_demo_nusakomik_id_2026';
+  const effectiveKey = apiKeyInput.trim() || userProfile?.apiKey || '';
 
   const buildRequestPath = (): string => {
     if (endpoint === 'detail') return `/api/v1/komik/detail/${encodeURIComponent(slugParam.trim())}`;
@@ -96,10 +97,29 @@ export function PlaygroundSection() {
 
   const requestPath = buildRequestPath();
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const rawTabUrl = `${requestPath}${requestPath.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(effectiveKey)}`;
-  const curlCommand = `curl -i -H "x-api-key: ${effectiveKey}" "${origin}${requestPath}"`;
+  const displayKey = effectiveKey || 'MASUKKAN_API_KEY_ANDA';
+  const rawTabUrl = effectiveKey
+    ? `${requestPath}${requestPath.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(effectiveKey)}`
+    : '';
+  const curlCommand = `curl -i -H "x-api-key: ${displayKey}" "${origin}${requestPath}"`;
 
   const runRequest = async () => {
+    if (!effectiveKey) {
+      setStatusLine('401 API Key Diperlukan');
+      setHeadersInfo({});
+      setResponseJson(
+        JSON.stringify(
+          {
+            status: false,
+            code: 401,
+            message: 'Silakan masuk via Email atau Google OAuth terlebih dahulu, atau tempel API Key pribadi Anda.',
+          },
+          null,
+          2
+        )
+      );
+      return;
+    }
     setRunning(true);
     try {
       const res = await fetch(requestPath, {
@@ -182,18 +202,19 @@ export function PlaygroundSection() {
             <label htmlFor="pg-endpoint" className="block text-xs font-semibold text-slate-700">
               Pilih Endpoint Komiku
             </label>
-            <select
+            <SelectDropdown
               id="pg-endpoint"
+              ariaLabel="Pilih endpoint Komiku"
               value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value as EndpointId)}
-              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-rose-700 focus:outline-none"
-            >
-              {ENDPOINT_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label} ({opt.pathPreview})
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setEndpoint(next as EndpointId)}
+              searchable
+              searchPlaceholder="Cari endpoint..."
+              className="mt-1.5 w-full"
+              options={ENDPOINT_OPTIONS.map((opt) => ({
+                value: opt.id,
+                label: `${opt.label} (${opt.pathPreview})`,
+              }))}
+            />
           </div>
 
           <div>
@@ -205,9 +226,19 @@ export function PlaygroundSection() {
               type="text"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder={userProfile?.apiKey || 'kmk_demo_nusakomik_id_2026'}
+              placeholder={userProfile?.apiKey || 'Masuk untuk mendapatkan API Key pribadi'}
               className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
             />
+            {!effectiveKey && (
+              <button
+                type="button"
+                onClick={openAuthModal}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 hover:text-rose-800"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                Masuk via Email atau Google untuk ambil API Key
+              </button>
+            )}
           </div>
 
           {['terupdate', 'terpopuler', 'trending', 'rekomendasi', 'berwarna', 'type', 'perpustakaan'].includes(endpoint) && (
@@ -215,17 +246,19 @@ export function PlaygroundSection() {
               <label htmlFor="pg-type" className="block text-xs font-semibold text-slate-700">
                 Tipe Komik
               </label>
-              <select
+              <SelectDropdown
                 id="pg-type"
+                ariaLabel="Tipe komik"
                 value={typeParam === 'all' && endpoint === 'type' ? 'Manhwa' : typeParam}
-                onChange={(e) => setTypeParam(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-rose-700 focus:outline-none"
-              >
-                {endpoint !== 'type' && <option value="all">Semua Tipe</option>}
-                <option value="Manga">Manga</option>
-                <option value="Manhwa">Manhwa</option>
-                <option value="Manhua">Manhua</option>
-              </select>
+                onChange={setTypeParam}
+                className="mt-1.5 w-full"
+                options={[
+                  ...(endpoint !== 'type' ? [{ value: 'all', label: 'Semua Tipe' }] : []),
+                  { value: 'Manga', label: 'Manga' },
+                  { value: 'Manhwa', label: 'Manhwa' },
+                  { value: 'Manhua', label: 'Manhua' },
+                ]}
+              />
             </div>
           )}
 
@@ -234,19 +267,19 @@ export function PlaygroundSection() {
               <label htmlFor="pg-genre" className="block text-xs font-semibold text-slate-700">
                 Genre Komiku
               </label>
-              <select
+              <SelectDropdown
                 id="pg-genre"
+                ariaLabel="Genre Komiku"
                 value={genreParam === 'all' && endpoint === 'genre' ? 'Action' : genreParam}
-                onChange={(e) => setGenreParam(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-rose-700 focus:outline-none"
-              >
-                {endpoint !== 'genre' && <option value="all">Semua Genre</option>}
-                {genresList.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
+                onChange={setGenreParam}
+                searchable
+                searchPlaceholder="Cari genre..."
+                className="mt-1.5 w-full"
+                options={[
+                  ...(endpoint !== 'genre' ? [{ value: 'all', label: 'Semua Genre' }] : []),
+                  ...genresList.map((g) => ({ value: g, label: g })),
+                ]}
+              />
             </div>
           )}
 
@@ -338,15 +371,26 @@ export function PlaygroundSection() {
               {running ? 'Mengambil Respon JSON...' : 'Ambil Respon JSON (Tanpa cURL)'}
             </button>
 
-            <a
-              href={rawTabUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Buka Raw JSON di Tab Browser Baru
-            </a>
+            {rawTabUrl ? (
+              <a
+                href={rawTabUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Buka Raw JSON di Tab Browser Baru
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={openAuthModal}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+              >
+                <Lock className="h-3.5 w-3.5 text-rose-700" />
+                Masuk untuk Buka Raw JSON
+              </button>
+            )}
           </div>
 
           <div className="border-t border-slate-200 pt-4 space-y-2">

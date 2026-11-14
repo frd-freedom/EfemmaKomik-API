@@ -1,5 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile,
+  type User,
+} from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import {
   OperationType,
@@ -10,14 +19,16 @@ import {
 } from '../lib/firebase';
 import type { ServerKeyUsage, UserProfile } from '../types';
 
-const BOOTSTRAP_ADMIN_EMAIL = 'predimahrobi@gmail.com';
+const MAIN_ADMIN_EMAIL = 'predimahrobi@gmail.com';
+const BOOTSTRAP_ADMIN_EMAILS = new Set([MAIN_ADMIN_EMAIL, 'sp.freemusichub@gmail.com']);
+const EMAIL_SESSION_STORAGE_KEY = 'nusakomik_email_session_token';
 
 export function generateApiKey(isAdmin: boolean): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   let token = '';
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.length; i += 1) {
     token += chars[bytes[i] % chars.length];
   }
   return `${isAdmin ? 'kmk_adm_' : 'kmk_usr_'}${token}`;
@@ -29,7 +40,16 @@ interface AuthContextValue {
   liveUsage: ServerKeyUsage | null;
   loading: boolean;
   authError: string | null;
+  needsEmailVerification: boolean;
+  authModalOpen: boolean;
+  openAuthModal: () => void;
+  closeAuthModal: () => void;
+  clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  registerWithEmail: (displayName: string, email: string, password: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  reloadVerificationStatus: () => Promise<boolean>;
   signOutUser: () => Promise<void>;
   regenerateApiKey: () => Promise<void>;
   refreshUsage: () => Promise<void>;
@@ -38,12 +58,73 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function usageToProfile(usage: ServerKeyUsage): UserProfile {
+  return {
+    uid: usage.uid,
+    email: usage.email,
+    displayName: usage.displayName,
+    photoURL: '',
+    role: usage.role,
+    plan: usage.plan,
+    apiKey: usage.apiKey,
+    dailyLimit: usage.dailyLimit,
+    requestsToday: usage.requestsToday,
+    requestsTotal: usage.requestsTotal,
+    status: usage.status,
+  };
+}
+
+function mapFirebaseAuthError(err: unknown): string {
+  const code = (err as { code?: string })?.code || '';
+  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+    return 'Email atau password tidak sesuai.';
+  }
+  if (code === 'auth/email-already-in-use') {
+    return 'Email sudah terdaftar. Silakan masuk dengan password Anda.';
+  }
+  if (code === 'auth/weak-password') {
+    return 'Password minimal harus 6 karakter.';
+  }
+  if (code === 'auth/invalid-email') {
+    return 'Format email tidak valid.';
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Provider Email/Password belum diaktifkan di Firebase Console. Aktifkan di Authentication -> Sign-in method -> Email/Password, atau gunakan Google OAuth.';
+  }
+  if (code === 'auth/popup-closed-by-user') {
+    return 'Login Google dibatalkan sebelum selesai.';
+  }
+  return err instanceof Error ? err.message : 'Autentikasi gagal.';
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [liveUsage, setLiveUsage] = useState<ServerKeyUsage | null>(null);
+  const [backendSessionToken, setBackendSessionToken] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined' ? window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  const openAuthModal = useCallback(() => {
+    setAuthError(null);
+    setAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalOpen(false);
+  }, []);
+
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+  }, []);
 
   const syncWithBackend = useCallback(async (fbUser: User, profile: UserProfile) => {
     try {
@@ -75,10 +156,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const ensureUserProfile = useCallback(
     async (fbUser: User) => {
+      if (!fbUser.emailVerified) {
+        setNeedsEmailVerification(true);
+        setUserProfile(null);
+        setLiveUsage(null);
+        return;
+      }
+
+      setNeedsEmailVerification(false);
       const userPath = `users/${fbUser.uid}`;
       const userRef = doc(db, 'users', fbUser.uid);
       const isBootstrapAdmin =
-        (fbUser.email || '').toLowerCase() === BOOTSTRAP_ADMIN_EMAIL && fbUser.emailVerified;
+        BOOTSTRAP_ADMIN_EMAILS.has((fbUser.email || '').toLowerCase()) && fbUser.emailVerified;
 
       let snap;
       try {
@@ -153,6 +242,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [syncWithBackend]
   );
 
+  // Restore server-issued email session (e.g. Admin Utama) if no Firebase user is active
+  const restoreBackendSession = useCallback(async (token: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/user/usage', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return false;
+      const json = (await res.json()) as { status: boolean; data?: ServerKeyUsage | null };
+      if (json.status && json.data) {
+        setLiveUsage(json.data);
+        setUserProfile(usageToProfile(json.data));
+        setNeedsEmailVerification(false);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
@@ -164,74 +273,239 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAuthError(err instanceof Error ? err.message : 'Gagal memuat profil pengguna.');
         }
       } else {
-        setUserProfile(null);
-        setLiveUsage(null);
+        const storedToken = (() => {
+          try {
+            return window.localStorage.getItem(EMAIL_SESSION_STORAGE_KEY);
+          } catch {
+            return null;
+          }
+        })();
+        if (storedToken) {
+          const ok = await restoreBackendSession(storedToken);
+          if (!ok) {
+            try {
+              window.localStorage.removeItem(EMAIL_SESSION_STORAGE_KEY);
+            } catch {
+              // ignore
+            }
+            setBackendSessionToken(null);
+            setUserProfile(null);
+            setLiveUsage(null);
+          } else {
+            setBackendSessionToken(storedToken);
+          }
+        } else {
+          setUserProfile(null);
+          setLiveUsage(null);
+          setNeedsEmailVerification(false);
+        }
       }
       setLoading(false);
     });
     return () => unsub();
-  }, [ensureUserProfile]);
+  }, [ensureUserProfile, restoreBackendSession]);
 
   const signInWithGoogle = useCallback(async () => {
     setAuthError(null);
     try {
       await signInWithPopup(auth, googleProvider);
+      setAuthModalOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gagal login dengan Google OAuth.';
+      const msg = mapFirebaseAuthError(err);
       setAuthError(msg);
-      throw err;
+      throw new Error(msg);
     }
   }, []);
 
+  const signInWithEmail = useCallback(
+    async (rawEmail: string, password: string) => {
+      setAuthError(null);
+      const email = rawEmail.trim().toLowerCase();
+      if (!email || !password) {
+        const msg = 'Email dan password wajib diisi.';
+        setAuthError(msg);
+        throw new Error(msg);
+      }
+
+      // Admin Utama server-verified email login
+      if (email === MAIN_ADMIN_EMAIL) {
+        const res = await fetch('/api/auth/email-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const json = (await res.json()) as {
+          status: boolean;
+          message?: string;
+          sessionToken?: string;
+          data?: ServerKeyUsage;
+        };
+        if (!res.ok || !json.status || !json.sessionToken || !json.data) {
+          const msg = json.message || 'Email atau password admin utama salah.';
+          setAuthError(msg);
+          throw new Error(msg);
+        }
+
+        try {
+          window.localStorage.setItem(EMAIL_SESSION_STORAGE_KEY, json.sessionToken);
+        } catch {
+          // ignore storage quota errors
+        }
+        setBackendSessionToken(json.sessionToken);
+        setLiveUsage(json.data);
+        setUserProfile(usageToProfile(json.data));
+        setNeedsEmailVerification(false);
+        setAuthModalOpen(false);
+        return;
+      }
+
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        if (!cred.user.emailVerified) {
+          setNeedsEmailVerification(true);
+        } else {
+          setAuthModalOpen(false);
+        }
+      } catch (err) {
+        const msg = mapFirebaseAuthError(err);
+        setAuthError(msg);
+        throw new Error(msg);
+      }
+    },
+    []
+  );
+
+  const registerWithEmail = useCallback(
+    async (displayName: string, rawEmail: string, password: string) => {
+      setAuthError(null);
+      const email = rawEmail.trim().toLowerCase();
+      const safeName = displayName.trim().slice(0, 120) || email.split('@')[0] || 'Developer';
+      if (!email || !password) {
+        const msg = 'Email dan password wajib diisi.';
+        setAuthError(msg);
+        throw new Error(msg);
+      }
+      if (email === MAIN_ADMIN_EMAIL) {
+        await signInWithEmail(email, password);
+        return;
+      }
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(cred.user, { displayName: safeName });
+        await sendEmailVerification(cred.user);
+        setNeedsEmailVerification(true);
+      } catch (err) {
+        const msg = mapFirebaseAuthError(err);
+        setAuthError(msg);
+        throw new Error(msg);
+      }
+    },
+    [signInWithEmail]
+  );
+
+  const resendVerificationEmail = useCallback(async () => {
+    if (!auth.currentUser) return;
+    setAuthError(null);
+    try {
+      await sendEmailVerification(auth.currentUser);
+    } catch (err) {
+      const msg = mapFirebaseAuthError(err);
+      setAuthError(msg);
+      throw new Error(msg);
+    }
+  }, []);
+
+  const reloadVerificationStatus = useCallback(async (): Promise<boolean> => {
+    if (!auth.currentUser) return false;
+    await auth.currentUser.reload();
+    const refreshed = auth.currentUser;
+    if (refreshed.emailVerified) {
+      await ensureUserProfile(refreshed);
+      setAuthModalOpen(false);
+      return true;
+    }
+    return false;
+  }, [ensureUserProfile]);
+
   const signOutUser = useCallback(async () => {
-    await signOut(auth);
+    try {
+      window.localStorage.removeItem(EMAIL_SESSION_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setBackendSessionToken(null);
+    setNeedsEmailVerification(false);
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
     setUserProfile(null);
     setLiveUsage(null);
   }, []);
 
-  const regenerateApiKey = useCallback(async () => {
-    if (!firebaseUser || !userProfile) return;
-    const isAdmin = userProfile.role === 'admin';
-    const nextKey = generateApiKey(isAdmin);
-    const userPath = `users/${firebaseUser.uid}`;
-    const userRef = doc(db, 'users', firebaseUser.uid);
+  const getIdToken = useCallback(async () => {
+    if (firebaseUser) return firebaseUser.getIdToken();
+    return backendSessionToken;
+  }, [firebaseUser, backendSessionToken]);
 
-    try {
-      await updateDoc(userRef, {
-        apiKey: nextKey,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, userPath);
+  const regenerateApiKey = useCallback(async () => {
+    if (!userProfile) return;
+
+    if (firebaseUser && firebaseUser.emailVerified) {
+      const isAdmin = userProfile.role === 'admin';
+      const nextKey = generateApiKey(isAdmin);
+      const userPath = `users/${firebaseUser.uid}`;
+      const userRef = doc(db, 'users', firebaseUser.uid);
+
+      try {
+        await updateDoc(userRef, {
+          apiKey: nextKey,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, userPath);
+      }
+
+      const updatedProfile: UserProfile = { ...userProfile, apiKey: nextKey };
+      setUserProfile(updatedProfile);
+      await syncWithBackend(firebaseUser, updatedProfile);
+      return;
     }
 
-    const updatedProfile: UserProfile = { ...userProfile, apiKey: nextKey };
-    setUserProfile(updatedProfile);
-    await syncWithBackend(firebaseUser, updatedProfile);
-  }, [firebaseUser, userProfile, syncWithBackend]);
+    if (backendSessionToken) {
+      const res = await fetch('/api/auth/regenerate-key', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${backendSessionToken}` },
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { status: boolean; data?: ServerKeyUsage };
+        if (json.data) {
+          setLiveUsage(json.data);
+          setUserProfile(usageToProfile(json.data));
+        }
+      }
+    }
+  }, [firebaseUser, backendSessionToken, userProfile, syncWithBackend]);
 
   const refreshUsage = useCallback(async () => {
-    if (!firebaseUser) return;
+    const token = await getIdToken();
+    if (!token) return;
     try {
-      const idToken = await firebaseUser.getIdToken();
       const res = await fetch('/api/user/usage', {
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const json = (await res.json()) as { status: boolean; data?: ServerKeyUsage | null };
         if (json.data) {
           setLiveUsage(json.data);
+          if (!firebaseUser) {
+            setUserProfile(usageToProfile(json.data));
+          }
         }
       }
     } catch {
       // Ignore transient network error
     }
-  }, [firebaseUser]);
-
-  const getIdToken = useCallback(async () => {
-    if (!firebaseUser) return null;
-    return firebaseUser.getIdToken();
-  }, [firebaseUser]);
+  }, [firebaseUser, getIdToken]);
 
   return (
     <AuthContext.Provider
@@ -241,7 +515,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         liveUsage,
         loading,
         authError,
+        needsEmailVerification,
+        authModalOpen,
+        openAuthModal,
+        closeAuthModal,
+        clearAuthError,
         signInWithGoogle,
+        signInWithEmail,
+        registerWithEmail,
+        resendVerificationEmail,
+        reloadVerificationStatus,
         signOutUser,
         regenerateApiKey,
         refreshUsage,

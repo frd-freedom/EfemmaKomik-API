@@ -104,7 +104,7 @@ export function DocsSection() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://domain-anda.run.app';
-  const activeKey = userProfile?.apiKey || 'kmk_demo_nusakomik_id_2026';
+  const activeKey = userProfile?.apiKey || 'MASUKKAN_API_KEY_ANDA';
 
   const copyText = (id: string, value: string) => {
     void navigator.clipboard.writeText(value);
@@ -238,7 +238,7 @@ curl -s -H "x-api-key: ${activeKey}" \\
         <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
           <h2 className="font-display text-lg font-bold text-slate-900">2. Autentikasi API Key & Cache L1</h2>
           <p className="text-sm leading-relaxed text-slate-600">
-            Pengguna Google OAuth mendapat kuota <span className="font-semibold text-slate-900 tabular-nums">1.000 request/hari</span>, sedangkan Admin mendapat kuota <span className="font-semibold text-slate-900">Unlimited</span>. Semua respon di-cache memakai L1 LRU + Stale-While-Revalidate untuk menjaga server upstream Komiku tetap ringan.
+            Pengguna terdaftar (via Email atau Google OAuth) mendapat kuota <span className="font-semibold text-slate-900 tabular-nums">1.000 request/hari</span>, sedangkan Admin mendapat kuota <span className="font-semibold text-slate-900">Unlimited</span>. Semua respon di-cache memakai L1 LRU + Stale-While-Revalidate untuk menjaga server upstream Komiku tetap ringan.
           </p>
           <div className="rounded-lg bg-slate-950 p-4 font-mono text-xs text-slate-100 space-y-1.5">
             <p className="text-slate-400"># URL langsung di tab browser (tanpa cURL):</p>

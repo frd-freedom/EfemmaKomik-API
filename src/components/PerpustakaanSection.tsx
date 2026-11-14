@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Code2, Search } from 'lucide-react
 import type { CatalogPagination, ComicSummary, KomikuFilters } from '../types';
 import { ComicDetailModal } from './ComicDetailModal';
 import { JsonResponseModal } from './JsonResponseModal';
+import { SelectDropdown } from './SelectDropdown';
 import { StarRating } from './StarRating';
 
 type LibraryPreset = 'all' | 'Manga' | 'Manhwa' | 'Manhua' | 'anime';
@@ -201,80 +202,87 @@ export function PerpustakaanSection() {
             <label htmlFor="lib-genre" className="block text-xs font-medium text-slate-600">
               Genre ({filters.genres.length})
             </label>
-            <select
+            <SelectDropdown
               id="lib-genre"
+              ariaLabel="Filter genre perpustakaan"
               value={genreFilter}
-              onChange={(e) => {
-                setGenreFilter(e.target.value);
+              onChange={(next) => {
+                setGenreFilter(next);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-rose-700 focus:outline-none"
-            >
-              <option value="all">Semua Genre</option>
-              {filters.genres.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
+              searchable
+              searchPlaceholder="Cari genre..."
+              className="mt-1 w-full"
+              options={[
+                { value: 'all', label: 'Semua Genre' },
+                ...filters.genres.map((g) => ({ value: g, label: g })),
+              ]}
+            />
           </div>
 
           <div>
             <label htmlFor="lib-status" className="block text-xs font-medium text-slate-600">
               Status Rilis
             </label>
-            <select
+            <SelectDropdown
               id="lib-status"
+              ariaLabel="Filter status rilis"
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+              onChange={(next) => {
+                setStatusFilter(next);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-rose-700 focus:outline-none"
-            >
-              <option value="all">Semua Status</option>
-              <option value="Ongoing">Ongoing</option>
-              <option value="Completed">Completed</option>
-              <option value="Hiatus">Hiatus</option>
-            </select>
+              className="mt-1 w-full"
+              options={[
+                { value: 'all', label: 'Semua Status' },
+                { value: 'Ongoing', label: 'Ongoing' },
+                { value: 'Completed', label: 'Completed' },
+                { value: 'Hiatus', label: 'Hiatus' },
+              ]}
+            />
           </div>
 
           <div>
             <label htmlFor="lib-sort" className="block text-xs font-medium text-slate-600">
               Urutkan
             </label>
-            <select
+            <SelectDropdown
               id="lib-sort"
+              ariaLabel="Urutkan perpustakaan"
               value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value as 'latest' | 'popular' | 'rating');
+              onChange={(next) => {
+                setSortBy(next as 'latest' | 'popular' | 'rating');
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-rose-700 focus:outline-none"
-            >
-              <option value="latest">Update Terbaru</option>
-              <option value="popular">Terpopuler (Views)</option>
-              <option value="rating">Rating Tertinggi</option>
-            </select>
+              className="mt-1 w-full"
+              options={[
+                { value: 'latest', label: 'Update Terbaru' },
+                { value: 'popular', label: 'Terpopuler (Views)' },
+                { value: 'rating', label: 'Rating Tertinggi' },
+              ]}
+            />
           </div>
 
           <div>
             <label htmlFor="lib-limit" className="block text-xs font-medium text-slate-600">
               Item per Halaman
             </label>
-            <select
+            <SelectDropdown
               id="lib-limit"
-              value={perPage}
-              onChange={(e) => {
-                setPerPage(Number(e.target.value));
+              ariaLabel="Jumlah item per halaman"
+              value={String(perPage)}
+              onChange={(next) => {
+                setPerPage(Number(next));
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 tabular-nums focus:border-rose-700 focus:outline-none"
-            >
-              <option value={10}>10 judul</option>
-              <option value={24}>24 judul</option>
-              <option value={50}>50 judul (Penuh)</option>
-            </select>
+              menuAlign="right"
+              className="mt-1 w-full"
+              options={[
+                { value: '10', label: '10 judul' },
+                { value: '24', label: '24 judul' },
+                { value: '50', label: '50 judul (Penuh)' },
+              ]}
+            />
           </div>
         </div>
       </div>

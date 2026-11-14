@@ -9,13 +9,36 @@ import {
   getKomikuFilters,
 } from './server/comicService.ts';
 import {
-  ADMIN_BOOTSTRAP_EMAIL,
-  DEMO_SANDBOX_KEY,
+  MAIN_ADMIN_EMAIL,
+  generateServerApiKey,
+  isBootstrapAdminEmail,
+  issueSessionToken,
   keyStore,
   verifyFirebaseIdToken,
+  verifyMainAdminCredentials,
+  verifySessionToken,
 } from './server/keyStore.ts';
 
-const PORT = Number(process.env.PORT || 3000);
+function resolveServerPort(): number {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if ((arg === '--port' || arg === '-p') && args[i + 1]) {
+      const parsed = Number(args[i + 1]);
+      if (Number.isInteger(parsed) && parsed > 0) return parsed;
+    } else if (arg.startsWith('--port=')) {
+      const parsed = Number(arg.slice('--port='.length));
+      if (Number.isInteger(parsed) && parsed > 0) return parsed;
+    }
+  }
+  const envPort = Number(process.env.PORT);
+  if (Number.isInteger(envPort) && envPort > 0 && envPort !== 8080) {
+    return envPort;
+  }
+  return 3000;
+}
+
+const PORT = resolveServerPort();
 const cache = new SmartCache(500);
 
 function isBlockedPrivateHost(hostname: string): boolean {
@@ -95,7 +118,6 @@ async function startServer() {
         upstream_source: 'komiku.org',
         cache: cache.getStats(),
         curl_anti_403: 'active',
-        demo_sandbox_key: DEMO_SANDBOX_KEY,
       },
     });
   });
@@ -238,7 +260,71 @@ async function startServer() {
     res.status(502).json({ status: false, code: 502, message: 'Gagal mengambil gambar upstream.' });
   });
 
-  // Google OAuth User Sync
+  // Main Admin & Session Email Login
+  app.post('/api/auth/email-login', (req: Request, res: Response) => {
+    const body = req.body as { email?: string; password?: string };
+    const email = String(body?.email || '').trim().toLowerCase();
+    const password = String(body?.password || '');
+
+    if (!email || !password) {
+      res.status(400).json({ status: false, message: 'Email dan password wajib diisi.' });
+      return;
+    }
+
+    if (email !== MAIN_ADMIN_EMAIL) {
+      res.status(401).json({
+        status: false,
+        message: 'Gunakan autentikasi Firebase Email/Password atau Google OAuth untuk akun reguler.',
+      });
+      return;
+    }
+
+    if (!verifyMainAdminCredentials(email, password)) {
+      res.status(401).json({ status: false, message: 'Email atau password admin utama salah.' });
+      return;
+    }
+
+    const record = keyStore.ensureMainAdminRecord();
+    const sessionToken = issueSessionToken({
+      uid: record.uid,
+      email: record.email,
+      displayName: record.displayName,
+      role: 'admin',
+    });
+
+    res.json({ status: true, sessionToken, data: record });
+  });
+
+  async function resolveAuthIdentity(
+    req: Request
+  ): Promise<{ uid: string; email: string; displayName: string; emailVerified: boolean; role?: 'user' | 'admin' } | null> {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return null;
+
+    if (token.startsWith('nk_sess_')) {
+      const sess = verifySessionToken(token);
+      if (!sess) return null;
+      return {
+        uid: sess.uid,
+        email: sess.email,
+        displayName: sess.displayName,
+        emailVerified: true,
+        role: sess.role,
+      };
+    }
+
+    const verified = await verifyFirebaseIdToken(token);
+    if (!verified) return null;
+    return {
+      uid: verified.uid,
+      email: verified.email,
+      displayName: verified.displayName,
+      emailVerified: verified.emailVerified,
+    };
+  }
+
+  // Google OAuth / Verified Firebase User Sync
   app.post('/api/auth/sync', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -261,7 +347,7 @@ async function startServer() {
       return;
     }
 
-    const isAdminEmail = verified.email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
+    const isAdminEmail = isBootstrapAdminEmail(verified.email);
     const synced = keyStore.syncUserRecord({
       uid: verified.uid,
       email: verified.email,
@@ -277,34 +363,81 @@ async function startServer() {
   });
 
   app.get('/api/user/usage', async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const verified = await verifyFirebaseIdToken(token);
-    if (!verified) {
+    const identity = await resolveAuthIdentity(req);
+    if (!identity) {
       res.status(401).json({ status: false, message: 'Unauthorized' });
       return;
     }
-    const rec = keyStore.getByUid(verified.uid);
+    const rec = keyStore.getByUid(identity.uid) || keyStore.getByEmail(identity.email);
     res.json({ status: true, data: rec });
   });
 
+  app.post('/api/auth/regenerate-key', async (req: Request, res: Response) => {
+    const identity = await resolveAuthIdentity(req);
+    if (!identity || !identity.emailVerified) {
+      res.status(401).json({ status: false, message: 'Unauthorized' });
+      return;
+    }
+    const target = keyStore.getByUid(identity.uid) || keyStore.getByEmail(identity.email);
+    if (!target) {
+      res.status(404).json({ status: false, message: 'Profil API Key tidak ditemukan.' });
+      return;
+    }
+    const updated = keyStore.regenerateKeyForUid(target.uid);
+    res.json({ status: true, data: updated });
+  });
+
   async function requireAdminToken(req: Request, res: Response): Promise<boolean> {
-    const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const verified = await verifyFirebaseIdToken(token);
-    if (!verified || !verified.emailVerified) {
+    const identity = await resolveAuthIdentity(req);
+    if (!identity || !identity.emailVerified) {
       res.status(401).json({ status: false, message: 'Token autentikasi admin tidak valid.' });
       return false;
     }
-    const existingRecord = keyStore.getByUid(verified.uid);
+    const existingRecord = keyStore.getByUid(identity.uid) || keyStore.getByEmail(identity.email);
     const isAdmin =
-      verified.email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL || existingRecord?.role === 'admin';
+      isBootstrapAdminEmail(identity.email) || existingRecord?.role === 'admin' || identity.role === 'admin';
     if (!isAdmin) {
       res.status(403).json({ status: false, message: 'Akses ditolak. Memerlukan hak akses Admin.' });
       return false;
     }
     return true;
   }
+
+  app.patch('/api/admin/users/:uid', async (req: Request, res: Response) => {
+    if (!(await requireAdminToken(req, res))) return;
+    const uid = String(req.params.uid);
+    const body = req.body as {
+      action?: 'update_plan' | 'toggle_role' | 'toggle_status' | 'reset_key';
+      plan?: 'free' | 'pro' | 'admin_unlimited';
+      role?: 'user' | 'admin';
+      status?: 'active' | 'suspended';
+    };
+
+    const target = keyStore.getByUid(uid);
+    if (!target) {
+      res.status(404).json({ status: false, message: 'User tidak ditemukan.' });
+      return;
+    }
+
+    if (body.action === 'reset_key') {
+      const updated = keyStore.updateUserByUid(uid, {
+        apiKey: generateServerApiKey(target.role === 'admin'),
+      });
+      res.json({ status: true, data: updated });
+      return;
+    }
+
+    const nextRole = body.role ?? target.role;
+    const nextPlan = body.plan ?? target.plan;
+    const nextLimit = nextPlan === 'admin_unlimited' || nextRole === 'admin' ? -1 : nextPlan === 'pro' ? 10000 : 1000;
+    const updated = keyStore.updateUserByUid(uid, {
+      role: nextRole,
+      plan: nextPlan,
+      dailyLimit: nextLimit,
+      status: body.status ?? target.status,
+    });
+    res.json({ status: true, data: updated });
+  });
 
   app.post('/api/admin/sync-keys', async (req: Request, res: Response) => {
     if (!(await requireAdminToken(req, res))) return;
@@ -394,7 +527,7 @@ async function startServer() {
         code: 401,
         message:
           'API Key wajib disertakan melalui header "x-api-key: <API_KEY>" atau query "?apikey=<API_KEY>".',
-        hint: `Gunakan sandbox key untuk uji coba: ${DEMO_SANDBOX_KEY}`,
+        hint: 'Silakan masuk melalui Email atau Google OAuth untuk mendapatkan API Key pribadi Anda.',
       });
       return;
     }

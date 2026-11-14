@@ -13,11 +13,30 @@ import {
 import { Check, Copy, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide-react';
 import { generateApiKey, useAuth } from '../contexts/AuthContext';
 import { OperationType, db, handleFirestoreError } from '../lib/firebase';
+import { SelectDropdown } from './SelectDropdown';
 import type { ApiAccessLog, CacheStats, ServerKeyUsage, UserPlan, UserProfile, UserRole } from '../types';
 
+function serverUsageToProfile(item: ServerKeyUsage): UserProfile {
+  return {
+    uid: item.uid,
+    email: item.email,
+    displayName: item.displayName,
+    photoURL: '',
+    role: item.role,
+    plan: item.plan,
+    apiKey: item.apiKey,
+    dailyLimit: item.dailyLimit,
+    requestsToday: item.requestsToday,
+    requestsTotal: item.requestsTotal,
+    status: item.status,
+    lastLoginAt: item.lastUsedAt || undefined,
+  };
+}
+
 export function AdminDashboard() {
-  const { userProfile, getIdToken } = useAuth();
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const { firebaseUser, userProfile, getIdToken } = useAuth();
+  const [firestoreUsers, setFirestoreUsers] = useState<UserProfile[]>([]);
+  const [backendUsers, setBackendUsers] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
@@ -30,10 +49,14 @@ export function AdminDashboard() {
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
 
   const isAdmin = userProfile?.role === 'admin';
+  const hasVerifiedFirebase = Boolean(firebaseUser && firebaseUser.emailVerified);
 
   const fetchBackendMetrics = useCallback(async () => {
     const token = await getIdToken();
-    if (!token) return;
+    if (!token) {
+      setLoadingUsers(false);
+      return;
+    }
     try {
       const res = await fetch('/api/admin/metrics', {
         headers: { Authorization: `Bearer ${token}` },
@@ -51,16 +74,23 @@ export function AdminDashboard() {
           setCacheStats(json.data.cache);
           setLogs(json.data.recent_logs);
           const map: Record<string, ServerKeyUsage> = {};
+          const mappedUsers: UserProfile[] = [];
           for (const item of json.data.usage_by_uid) {
             map[item.uid] = item;
+            mappedUsers.push(serverUsageToProfile(item));
           }
           setUsageMap(map);
+          setBackendUsers(mappedUsers);
         }
       }
     } catch {
       // Ignore network hiccup
+    } finally {
+      if (!hasVerifiedFirebase) {
+        setLoadingUsers(false);
+      }
     }
-  }, [getIdToken]);
+  }, [getIdToken, hasVerifiedFirebase]);
 
   const syncKeysToBackend = useCallback(
     async (userList: UserProfile[]) => {
@@ -96,12 +126,19 @@ export function AdminDashboard() {
   useEffect(() => {
     if (!isAdmin) return;
     setLoadingUsers(true);
+    void fetchBackendMetrics();
+
+    if (!hasVerifiedFirebase) {
+      setFirestoreUsers([]);
+      return;
+    }
+
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
       q,
       (snapshot) => {
         const list: UserProfile[] = snapshot.docs.map((d) => d.data() as UserProfile);
-        setUsers(list);
+        setFirestoreUsers(list);
         setLoadingUsers(false);
         void syncKeysToBackend(list);
       },
@@ -110,9 +147,19 @@ export function AdminDashboard() {
         handleFirestoreError(error, OperationType.LIST, 'users');
       }
     );
-    void fetchBackendMetrics();
     return () => unsub();
-  }, [isAdmin, fetchBackendMetrics, syncKeysToBackend]);
+  }, [isAdmin, hasVerifiedFirebase, fetchBackendMetrics, syncKeysToBackend]);
+
+  const firestoreUids = new Set(firestoreUsers.map((u) => u.uid));
+  const users: UserProfile[] = (() => {
+    if (!hasVerifiedFirebase) return backendUsers;
+    const byUid = new Map<string, UserProfile>();
+    for (const u of firestoreUsers) byUid.set(u.uid, u);
+    for (const u of backendUsers) {
+      if (!byUid.has(u.uid)) byUid.set(u.uid, u);
+    }
+    return Array.from(byUid.values());
+  })();
 
   if (!isAdmin) {
     return (
@@ -131,28 +178,47 @@ export function AdminDashboard() {
     setTimeout(() => setNotice(null), 3000);
   };
 
+  const patchBackendUser = async (uid: string, payload: Record<string, unknown>) => {
+    const token = await getIdToken();
+    if (!token) return;
+    await fetch(`/api/admin/users/${encodeURIComponent(uid)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  };
+
   const handlePlanChange = async (user: UserProfile, nextPlan: UserPlan) => {
     const nextLimit = nextPlan === 'admin_unlimited' ? -1 : nextPlan === 'pro' ? 10000 : 1000;
     const nextRole: UserRole = nextPlan === 'admin_unlimited' ? 'admin' : user.role;
     setBusyAction(user.uid);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        plan: nextPlan,
-        dailyLimit: nextLimit,
-        role: nextRole,
-        updatedAt: serverTimestamp(),
-      });
-      if (nextRole === 'admin') {
-        await setDoc(doc(db, 'admins', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          grantedBy: userProfile.uid,
-          createdAt: serverTimestamp(),
+      await patchBackendUser(user.uid, { action: 'update_plan', plan: nextPlan, role: nextRole });
+      if (hasVerifiedFirebase && firestoreUids.has(user.uid)) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          plan: nextPlan,
+          dailyLimit: nextLimit,
+          role: nextRole,
+          updatedAt: serverTimestamp(),
         });
+        if (nextRole === 'admin') {
+          await setDoc(doc(db, 'admins', user.uid), {
+            uid: user.uid,
+            email: user.email,
+            grantedBy: userProfile.uid,
+            createdAt: serverTimestamp(),
+          });
+        }
       }
+      await fetchBackendMetrics();
       showNotice(`Paket ${user.displayName} diperbarui ke ${nextPlan}.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      if (hasVerifiedFirebase) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -165,25 +231,31 @@ export function AdminDashboard() {
     const nextLimit = nextRole === 'admin' ? -1 : 1000;
     setBusyAction(user.uid);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        role: nextRole,
-        plan: nextPlan,
-        dailyLimit: nextLimit,
-        updatedAt: serverTimestamp(),
-      });
-      if (nextRole === 'admin') {
-        await setDoc(doc(db, 'admins', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          grantedBy: userProfile.uid,
-          createdAt: serverTimestamp(),
+      await patchBackendUser(user.uid, { action: 'toggle_role', role: nextRole, plan: nextPlan });
+      if (hasVerifiedFirebase && firestoreUids.has(user.uid)) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          role: nextRole,
+          plan: nextPlan,
+          dailyLimit: nextLimit,
+          updatedAt: serverTimestamp(),
         });
-      } else {
-        await deleteDoc(doc(db, 'admins', user.uid));
+        if (nextRole === 'admin') {
+          await setDoc(doc(db, 'admins', user.uid), {
+            uid: user.uid,
+            email: user.email,
+            grantedBy: userProfile.uid,
+            createdAt: serverTimestamp(),
+          });
+        } else {
+          await deleteDoc(doc(db, 'admins', user.uid));
+        }
       }
+      await fetchBackendMetrics();
       showNotice(`Role ${user.displayName} diubah menjadi ${nextRole}.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      if (hasVerifiedFirebase) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -194,13 +266,19 @@ export function AdminDashboard() {
     const nextStatus = user.status === 'active' ? 'suspended' : 'active';
     setBusyAction(user.uid);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        status: nextStatus,
-        updatedAt: serverTimestamp(),
-      });
+      await patchBackendUser(user.uid, { action: 'toggle_status', status: nextStatus });
+      if (hasVerifiedFirebase && firestoreUids.has(user.uid)) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          status: nextStatus,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await fetchBackendMetrics();
       showNotice(`Status ${user.displayName} diubah ke ${nextStatus}.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      if (hasVerifiedFirebase) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -210,13 +288,20 @@ export function AdminDashboard() {
     const nextKey = generateApiKey(user.role === 'admin');
     setBusyAction(user.uid);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        apiKey: nextKey,
-        updatedAt: serverTimestamp(),
-      });
+      if (hasVerifiedFirebase && firestoreUids.has(user.uid)) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          apiKey: nextKey,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await patchBackendUser(user.uid, { action: 'reset_key' });
+      }
+      await fetchBackendMetrics();
       showNotice(`API Key baru dibuat untuk ${user.displayName}.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      if (hasVerifiedFirebase) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -264,6 +349,17 @@ export function AdminDashboard() {
 
   const formatDate = (val: unknown): string => {
     if (!val) return '-';
+    if (typeof val === 'string') {
+      const d = new Date(val);
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleString('id-ID', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    }
     if (typeof val === 'object' && val !== null && 'toDate' in val && typeof (val as { toDate: () => Date }).toDate === 'function') {
       return (val as { toDate: () => Date }).toDate().toLocaleString('id-ID', {
         day: '2-digit',
@@ -377,25 +473,32 @@ export function AdminDashboard() {
               />
             </div>
 
-            <select
+            <SelectDropdown
+              ariaLabel="Filter role pengguna"
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as 'all' | UserRole)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-rose-700 focus:outline-none"
-            >
-              <option value="all">Semua Role</option>
-              <option value="admin">Admin</option>
-              <option value="user">User</option>
-            </select>
+              onChange={(next) => setRoleFilter(next as 'all' | UserRole)}
+              className="w-36"
+              buttonClassName="py-1.5"
+              options={[
+                { value: 'all', label: 'Semua Role' },
+                { value: 'admin', label: 'Admin' },
+                { value: 'user', label: 'User' },
+              ]}
+            />
 
-            <select
+            <SelectDropdown
+              ariaLabel="Filter status pengguna"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'suspended')}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-rose-700 focus:outline-none"
-            >
-              <option value="all">Semua Status</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-            </select>
+              onChange={(next) => setStatusFilter(next as 'all' | 'active' | 'suspended')}
+              menuAlign="right"
+              className="w-36"
+              buttonClassName="py-1.5"
+              options={[
+                { value: 'all', label: 'Semua Status' },
+                { value: 'active', label: 'Active' },
+                { value: 'suspended', label: 'Suspended' },
+              ]}
+            />
           </div>
         </div>
 
@@ -463,17 +566,20 @@ export function AdminDashboard() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <select
-                          aria-label={`Ubah paket ${u.displayName}`}
+                        <SelectDropdown
+                          ariaLabel={`Ubah paket ${u.displayName}`}
                           disabled={busyAction === u.uid || isSelf}
                           value={u.plan}
-                          onChange={(e) => void handlePlanChange(u, e.target.value as UserPlan)}
-                          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 disabled:opacity-60"
-                        >
-                          <option value="free">Free (1.000/hr)</option>
-                          <option value="pro">Pro (10.000/hr)</option>
-                          <option value="admin_unlimited">Unlimited</option>
-                        </select>
+                          onChange={(next) => void handlePlanChange(u, next as UserPlan)}
+                          portal
+                          className="w-36"
+                          buttonClassName="py-1"
+                          options={[
+                            { value: 'free', label: 'Free (1.000/hr)' },
+                            { value: 'pro', label: 'Pro (10.000/hr)' },
+                            { value: 'admin_unlimited', label: 'Unlimited' },
+                          ]}
+                        />
                       </td>
 
                       <td className="px-4 py-3">

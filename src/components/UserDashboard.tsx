@@ -1,17 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Copy, Eye, EyeOff, KeyRound, RefreshCw } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, KeyRound, Lock, Mail, RefreshCw, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function UserDashboard() {
   const {
+    firebaseUser,
     userProfile,
     liveUsage,
     loading,
     authError,
+    needsEmailVerification,
+    clearAuthError,
+    signInWithEmail,
+    registerWithEmail,
+    resendVerificationEmail,
+    reloadVerificationStatus,
     signInWithGoogle,
+    signOutUser,
     regenerateApiKey,
     refreshUsage,
   } = useAuth();
+
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [infoNotice, setInfoNotice] = useState<string | null>(null);
 
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -34,17 +50,80 @@ export function UserDashboard() {
     );
   }
 
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInfoNotice(null);
+    setSubmitting(true);
+    try {
+      if (authMode === 'login') {
+        await signInWithEmail(email, password);
+      } else {
+        await registerWithEmail(displayName, email, password);
+        setInfoNotice('Tautan verifikasi email telah dikirim. Periksa kotak masuk Anda.');
+      }
+    } catch {
+      // authError populated in context
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setInfoNotice(null);
+    setSubmitting(true);
+    try {
+      await signInWithGoogle();
+    } catch {
+      // authError populated in context
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setSubmitting(true);
+    try {
+      await resendVerificationEmail();
+      setInfoNotice('Email verifikasi ulang telah dikirim.');
+    } catch {
+      // handled
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCheckVerified = async () => {
+    setSubmitting(true);
+    try {
+      const ok = await reloadVerificationStatus();
+      if (!ok) {
+        setInfoNotice('Email belum terverifikasi. Pastikan Anda sudah mengklik tautan di email.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!userProfile) {
-    return (
-      <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-8 sm:p-10">
-        <div className="space-y-4">
-          <p className="text-xs font-semibold text-rose-700">Autentikasi Google OAuth</p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            Masuk atau Daftar untuk Mendapatkan API Key Pribadi
-          </h1>
-          <p className="text-sm leading-relaxed text-slate-600">
-            Gunakan akun Google Anda untuk registrasi dan login instan. Setiap akun otomatis menerima API Key unik dengan kuota <span className="font-semibold text-slate-900">1.000 request/hari</span> (atau akses <span className="font-semibold text-slate-900">Unlimited</span> untuk Admin).
-          </p>
+    if (needsEmailVerification && firebaseUser) {
+      return (
+        <div className="mx-auto max-w-xl rounded-xl border border-slate-200 bg-white p-6 sm:p-8 space-y-5">
+          <div>
+            <p className="text-xs font-semibold text-rose-700">Verifikasi Email Diperlukan</p>
+            <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950">
+              Aktivasi Akun & API Key Anda
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Kami telah mengirim tautan verifikasi ke{' '}
+              <span className="font-semibold text-slate-900">{firebaseUser.email}</span>. Klik tautan tersebut lalu tekan tombol verifikasi di bawah untuk mengaktifkan API Key Anda.
+            </p>
+          </div>
+
+          {infoNotice && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+              {infoNotice}
+            </div>
+          )}
 
           {authError && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
@@ -52,26 +131,195 @@ export function UserDashboard() {
             </div>
           )}
 
-          <div className="pt-2">
+          <div className="flex flex-col gap-2.5 sm:flex-row">
             <button
               type="button"
-              onClick={() => void signInWithGoogle()}
-              className="inline-flex items-center gap-3 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+              disabled={submitting}
+              onClick={() => void handleCheckVerified()}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50"
             >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  fill="#EA4335"
-                  d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.8-5.5 3.8-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.3 14.6 2.4 12 2.4 6.7 2.4 2.4 6.7 2.4 12s4.3 9.6 9.6 9.6c5.5 0 9.2-3.9 9.2-9.4 0-.6-.1-1.1-.2-1.6H12z"
-                />
-              </svg>
-              Lanjutkan dengan Google OAuth
+              <RefreshCw className={`h-4 w-4 ${submitting ? 'animate-spin' : ''}`} />
+              Saya Sudah Verifikasi
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => void handleResendVerification()}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Kirim Ulang Email
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => void signOutUser()}
+            className="text-xs font-medium text-slate-500 hover:text-slate-900"
+          >
+            Keluar & gunakan akun lain
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 sm:p-10">
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold text-rose-700">Autentikasi Email & Google OAuth</p>
+            <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+              Masuk atau Daftar untuk Mendapatkan API Key Pribadi
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Masuk menggunakan Email & Password atau akun Google Anda. Setiap akun otomatis menerima API Key unik dengan kuota{' '}
+              <span className="font-semibold text-slate-900">1.000 request/hari</span> (atau akses{' '}
+              <span className="font-semibold text-slate-900">Unlimited</span> untuk Admin).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('login');
+                clearAuthError();
+                setInfoNotice(null);
+              }}
+              className={`rounded-md py-1.5 text-xs font-semibold transition-colors ${
+                authMode === 'login' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Masuk
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('register');
+                clearAuthError();
+                setInfoNotice(null);
+              }}
+              className={`rounded-md py-1.5 text-xs font-semibold transition-colors ${
+                authMode === 'register' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Daftar Baru
+            </button>
+          </div>
+
+          {authError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
+              {authError}
+            </div>
+          )}
+
+          {infoNotice && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+              {infoNotice}
+            </div>
+          )}
+
+          <form onSubmit={(e) => void handleEmailSubmit(e)} className="space-y-3.5">
+            {authMode === 'register' && (
+              <div>
+                <label htmlFor="ud-name" className="block text-xs font-semibold text-slate-700">
+                  Nama Lengkap
+                </label>
+                <div className="relative mt-1">
+                  <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="ud-name"
+                    type="text"
+                    required
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Nama developer"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="ud-email" className="block text-xs font-semibold text-slate-700">
+                Alamat Email
+              </label>
+              <div className="relative mt-1">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="ud-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nama@email.com"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="ud-password" className="block text-xs font-semibold text-slate-700">
+                Password
+              </label>
+              <div className="relative mt-1">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="ud-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Minimal 6 karakter"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-rose-700 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-1 sm:flex-row">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex flex-1 items-center justify-center rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-800 disabled:opacity-50"
+              >
+                {submitting
+                  ? 'Memproses...'
+                  : authMode === 'login'
+                    ? 'Masuk dengan Email'
+                    : 'Daftar & Buat API Key'}
+              </button>
+
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleGoogleLogin()}
+                className="inline-flex items-center justify-center gap-2.5 rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="#EA4335"
+                    d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.8-5.5 3.8-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.3 14.6 2.4 12 2.4 6.7 2.4 2.4 6.7 2.4 12s4.3 9.6 9.6 9.6c5.5 0 9.2-3.9 9.2-9.4 0-.6-.1-1.1-.2-1.6H12z"
+                  />
+                </svg>
+                Google OAuth
+              </button>
+            </div>
+          </form>
 
           <div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-6 text-xs text-slate-600 sm:grid-cols-3">
             <div>
               <p className="font-semibold text-slate-900">Otomatis Terdaftar</p>
-              <p className="mt-1">Data profil dan API key tersimpan aman di Firestore.</p>
+              <p className="mt-1">Data profil dan API key tersimpan aman di sistem.</p>
             </div>
             <div>
               <p className="font-semibold text-slate-900">Anti-403 cURL</p>

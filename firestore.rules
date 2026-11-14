@@ -28,7 +28,7 @@ service cloud.firestore {
     }
 
     function isBootstrappedAdmin() {
-      return isVerified() && request.auth.token.email == 'predimahrobi@gmail.com';
+      return isVerified() && request.auth.token.email in ['sp.freemusichub@gmail.com', 'predimahrobi@gmail.com'];
     }
 
     function isAdmin() {
